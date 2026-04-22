@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use clap::{Args, ValueEnum};
+use lexopt::prelude::*;
 
 use crate::classifier::Classifier;
 use crate::paths::AppPaths;
@@ -12,35 +12,69 @@ use crate::storage::dict::Dict;
 use crate::storage::log::{LogDate, LogReader};
 use crate::storage::writer::{now_unix, unix_to_utc_date, utc_midnight_unix};
 
-#[derive(Debug, Args)]
 pub struct ReportArgs {
-    /// 显式日期范围 (YYYY-MM-DD)。
-    #[arg(long)]
     pub from: Option<String>,
-    #[arg(long)]
     pub to: Option<String>,
-    /// 快捷范围。
-    #[arg(long, conflicts_with_all = ["from", "to"])]
     pub today: bool,
-    #[arg(long, conflicts_with_all = ["from", "to", "today"])]
     pub yesterday: bool,
-    #[arg(long, conflicts_with_all = ["from", "to", "today", "yesterday"])]
     pub week: bool,
-    #[arg(long, conflicts_with_all = ["from", "to", "today", "yesterday", "week"])]
     pub month: bool,
-    /// 聚合维度。
-    #[arg(long, value_enum, default_value_t = By::App)]
     pub by: By,
-    /// 显示前 N 项。
-    #[arg(long, default_value_t = 20)]
     pub top: usize,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Clone, Copy, Debug)]
 pub enum By {
     App,
     Category,
     Title,
+}
+
+const REPORT_HELP: &str = "\
+tracker report — 按 app/category/title 聚合时长
+
+OPTIONS:
+    --from YYYY-MM-DD     起始日期（含）
+    --to   YYYY-MM-DD     截止日期（含）
+    --today               仅今天
+    --yesterday           仅昨天
+    --week                最近 7 天
+    --month               最近 30 天
+    --by app|category|title   聚合维度（默认 app）
+    --top N               显示前 N 项（默认 20）
+    -h, --help            打印帮助
+";
+
+pub fn parse(p: &mut lexopt::Parser) -> Result<ReportArgs, lexopt::Error> {
+    let mut args = ReportArgs {
+        from: None, to: None, today: false, yesterday: false, week: false, month: false,
+        by: By::App, top: 20,
+    };
+    while let Some(arg) = p.next()? {
+        match arg {
+            Short('h') | Long("help") => { print!("{REPORT_HELP}"); std::process::exit(0); }
+            Long("from") => args.from = Some(p.value()?.string()?),
+            Long("to") => args.to = Some(p.value()?.string()?),
+            Long("today") => args.today = true,
+            Long("yesterday") => args.yesterday = true,
+            Long("week") => args.week = true,
+            Long("month") => args.month = true,
+            Long("by") => {
+                args.by = match p.value()?.string()?.as_str() {
+                    "app" => By::App,
+                    "category" => By::Category,
+                    "title" => By::Title,
+                    other => return Err(lexopt::Error::UnexpectedValue {
+                        option: "--by".into(),
+                        value: other.into(),
+                    }),
+                };
+            }
+            Long("top") => args.top = p.value()?.parse()?,
+            _ => return Err(arg.unexpected()),
+        }
+    }
+    Ok(args)
 }
 
 pub fn run(args: ReportArgs, paths: &AppPaths, machine_scope: bool) -> std::io::Result<()> {
@@ -94,7 +128,7 @@ fn display_app(exe_path: &str) -> String {
         .unwrap_or_else(|| exe_path.to_string())
 }
 
-fn fmt_dur(secs: u64) -> String {
+pub fn fmt_dur(secs: u64) -> String {
     let h = secs / 3600;
     let m = (secs % 3600) / 60;
     let s = secs % 60;
@@ -125,9 +159,7 @@ pub fn next_day(d: LogDate) -> LogDate {
 
 fn resolve_range(args: &ReportArgs) -> std::io::Result<(LogDate, LogDate)> {
     let today = unix_to_utc_date(now_unix());
-    if args.today {
-        return Ok((today, today));
-    }
+    if args.today { return Ok((today, today)); }
     if args.yesterday {
         let y = unix_to_utc_date(utc_midnight_unix(today).saturating_sub(86400));
         return Ok((y, y));

@@ -38,7 +38,6 @@ pub fn run(scope: InstallScope) -> std::io::Result<()> {
     };
     let writer_handle = thread::Builder::new()
         .name("rtn-writer".into())
-        .stack_size(64 * 1024)
         .spawn(move || {
             if let Err(e) = writer::run(writer_cfg, wrx) {
                 eprintln!("[rtn] writer error: {e}");
@@ -54,7 +53,6 @@ pub fn run(scope: InstallScope) -> std::io::Result<()> {
         let wtx2 = wtx.clone();
         thread::Builder::new()
             .name("rtn-aggr".into())
-            .stack_size(128 * 1024)
             .spawn(move || aggregator_loop(cfg2, hrx, wtx2))?
     };
 
@@ -73,7 +71,6 @@ pub fn run(scope: InstallScope) -> std::io::Result<()> {
     let stop_event = create_stop_event()?;
     let _waiter = thread::Builder::new()
         .name("rtn-stop-wait".into())
-        .stack_size(32 * 1024)
         .spawn(move || {
             let ev = stop_event;
             unsafe {

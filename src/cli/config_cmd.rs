@@ -1,31 +1,75 @@
-//! `tracker config get|set|path` 子命令。
+//! `tracker config show|init|path|set|get` 子命令。
 
-use clap::{Args, Subcommand};
+use lexopt::prelude::*;
 
 use crate::config::Config;
 use crate::paths::AppPaths;
 
-#[derive(Debug, Args)]
 pub struct ConfigArgs {
-    #[command(subcommand)]
     pub cmd: ConfigCmd,
 }
 
-#[derive(Debug, Subcommand)]
 pub enum ConfigCmd {
-    /// 显示完整配置（即便文件不存在也展示默认值）。
     Show,
-    /// 写出当前配置到磁盘（创建 config.toml 模板）。
     Init,
-    /// 显示 config.toml 路径。
     Path,
-    /// 修改单个字段。
-    Set {
-        key: String,
-        value: String,
-    },
-    /// 读取单个字段。
+    Set { key: String, value: String },
     Get { key: String },
+}
+
+const CFG_HELP: &str = "\
+tracker config — 读写配置项
+
+USAGE:
+    tracker config show
+    tracker config init
+    tracker config path
+    tracker config set <KEY> <VALUE>
+    tracker config get <KEY>
+
+KEYS:
+    afk_minutes, capture_titles, flush_interval_secs,
+    flush_block_records, idle_tick_secs, title_max_chars,
+    title_blacklist (逗号分隔的 exe basename)
+";
+
+pub fn parse(p: &mut lexopt::Parser) -> Result<ConfigArgs, lexopt::Error> {
+    // 第一个非 flag 是 sub-sub command
+    let mut sub: Option<String> = None;
+    let mut positional: Vec<String> = Vec::new();
+    while let Some(arg) = p.next()? {
+        match arg {
+            Short('h') | Long("help") => { print!("{CFG_HELP}"); std::process::exit(0); }
+            Value(v) => {
+                if sub.is_none() {
+                    sub = Some(v.to_string_lossy().into_owned());
+                } else {
+                    positional.push(v.to_string_lossy().into_owned());
+                }
+            }
+            _ => return Err(arg.unexpected()),
+        }
+    }
+    let sub = sub.ok_or(lexopt::Error::MissingValue { option: Some("config <SUBCOMMAND>".into()) })?;
+    let cmd = match sub.as_str() {
+        "show" => ConfigCmd::Show,
+        "init" => ConfigCmd::Init,
+        "path" => ConfigCmd::Path,
+        "set" => {
+            let key = positional.first().cloned()
+                .ok_or(lexopt::Error::MissingValue { option: Some("KEY".into()) })?;
+            let value = positional.get(1).cloned()
+                .ok_or(lexopt::Error::MissingValue { option: Some("VALUE".into()) })?;
+            ConfigCmd::Set { key, value }
+        }
+        "get" => {
+            let key = positional.first().cloned()
+                .ok_or(lexopt::Error::MissingValue { option: Some("KEY".into()) })?;
+            ConfigCmd::Get { key }
+        }
+        other => return Err(lexopt::Error::UnexpectedArgument(format!("unknown config subcommand: {other}").into())),
+    };
+    Ok(ConfigArgs { cmd })
 }
 
 pub fn run(args: ConfigArgs, paths: &AppPaths) -> std::io::Result<()> {

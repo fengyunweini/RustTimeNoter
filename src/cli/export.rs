@@ -3,7 +3,7 @@
 use std::io::Write;
 use std::path::PathBuf;
 
-use clap::{Args, ValueEnum};
+use lexopt::prelude::*;
 use serde::Serialize;
 
 use crate::classifier::Classifier;
@@ -14,19 +14,14 @@ use crate::storage::dict::Dict;
 use crate::storage::log::LogReader;
 use crate::storage::writer::{now_unix, unix_to_utc_date, utc_midnight_unix};
 
-#[derive(Debug, Args)]
 pub struct ExportArgs {
-    #[arg(long, value_enum, default_value_t = Format::Csv)]
     pub format: Format,
-    #[arg(long)]
     pub out: PathBuf,
-    #[arg(long)]
     pub from: Option<String>,
-    #[arg(long)]
     pub to: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Clone, Copy)]
 pub enum Format { Csv, Json }
 
 #[derive(Serialize)]
@@ -37,6 +32,45 @@ struct Row<'a> {
     app_path: &'a str,
     title: Option<&'a str>,
     category: Option<&'a str>,
+}
+
+const EXPORT_HELP: &str = "\
+tracker export — 导出原始记录
+
+OPTIONS:
+    --format csv|json     输出格式（默认 csv）
+    --out PATH            输出文件路径（必填）
+    --from YYYY-MM-DD     起始（默认今天）
+    --to   YYYY-MM-DD     截止（默认今天）
+    -h, --help            打印帮助
+";
+
+pub fn parse(p: &mut lexopt::Parser) -> Result<ExportArgs, lexopt::Error> {
+    let mut format = Format::Csv;
+    let mut out: Option<PathBuf> = None;
+    let mut from: Option<String> = None;
+    let mut to: Option<String> = None;
+    while let Some(arg) = p.next()? {
+        match arg {
+            Short('h') | Long("help") => { print!("{EXPORT_HELP}"); std::process::exit(0); }
+            Long("format") => {
+                format = match p.value()?.string()?.as_str() {
+                    "csv" => Format::Csv,
+                    "json" => Format::Json,
+                    other => return Err(lexopt::Error::UnexpectedValue {
+                        option: "--format".into(),
+                        value: other.into(),
+                    }),
+                };
+            }
+            Long("out") => out = Some(p.value()?.into()),
+            Long("from") => from = Some(p.value()?.string()?),
+            Long("to") => to = Some(p.value()?.string()?),
+            _ => return Err(arg.unexpected()),
+        }
+    }
+    let out = out.ok_or(lexopt::Error::MissingValue { option: Some("--out".into()) })?;
+    Ok(ExportArgs { format, out, from, to })
 }
 
 pub fn run(args: ExportArgs, paths: &AppPaths, machine_scope: bool) -> std::io::Result<()> {
@@ -107,23 +141,25 @@ pub fn run(args: ExportArgs, paths: &AppPaths, machine_scope: bool) -> std::io::
         }
         date = next_day(date);
     }
+
     if matches!(args.format, Format::Json) {
         write!(out, "]")?;
     }
+    out.flush()?;
+    println!("wrote {}", args.out.display());
     Ok(())
 }
 
-fn fmt_time_of_day(offset_secs: u32) -> String {
-    let h = offset_secs / 3600;
-    let m = (offset_secs % 3600) / 60;
-    let s = offset_secs % 60;
+fn fmt_time_of_day(secs: u32) -> String {
+    let h = secs / 3600;
+    let m = (secs % 3600) / 60;
+    let s = secs % 60;
     format!("{h:02}:{m:02}:{s:02}")
 }
 
 fn csv_escape(s: &str) -> String {
     if s.contains(',') || s.contains('"') || s.contains('\n') {
-        let escaped = s.replace('"', "\"\"");
-        format!("\"{escaped}\"")
+        format!("\"{}\"", s.replace('"', "\"\""))
     } else {
         s.to_string()
     }

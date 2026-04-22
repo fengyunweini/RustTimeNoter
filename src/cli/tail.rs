@@ -1,0 +1,85 @@
+//! `tracker tail` — 实时跟随当日日志。
+
+use std::time::Duration;
+
+use lexopt::prelude::*;
+
+use crate::paths::AppPaths;
+use crate::storage::crypto::{load_or_create_master_key, Cipher};
+use crate::storage::dict::Dict;
+use crate::storage::log::LogReader;
+use crate::storage::writer::{now_unix, unix_to_utc_date};
+
+pub struct TailArgs {
+    pub interval: u64,
+    pub once: bool,
+    pub history: usize,
+}
+
+const TAIL_HELP: &str = "\
+tracker tail — 实时跟随当日日志
+
+OPTIONS:
+    --interval N    轮询间隔秒（默认 2）
+    --once          仅显示一次后退出
+    --history N     启动时打印最近 N 条历史（默认 10）
+    -h, --help      打印帮助
+";
+
+pub fn parse(p: &mut lexopt::Parser) -> Result<TailArgs, lexopt::Error> {
+    let mut args = TailArgs { interval: 2, once: false, history: 10 };
+    while let Some(arg) = p.next()? {
+        match arg {
+            Short('h') | Long("help") => { print!("{TAIL_HELP}"); std::process::exit(0); }
+            Long("interval") => args.interval = p.value()?.parse()?,
+            Long("once") => args.once = true,
+            Long("history") => args.history = p.value()?.parse()?,
+            _ => return Err(arg.unexpected()),
+        }
+    }
+    Ok(args)
+}
+
+pub fn run(args: TailArgs, paths: &AppPaths, machine_scope: bool) -> std::io::Result<()> {
+    let key = load_or_create_master_key(&paths.key_file, machine_scope)?;
+    let cipher = Cipher::new(&key);
+    let apps = Dict::open(&paths.apps_dict)?;
+    let titles = Dict::open(&paths.titles_dict)?;
+
+    let mut printed: usize = 0;
+    let mut first = true;
+
+    loop {
+        let today = unix_to_utc_date(now_unix());
+        let log_path = paths.log_file_for_day(today.year, today.month, today.day);
+        let recs = LogReader::new(cipher.clone(), today)
+            .read_all(&log_path)
+            .unwrap_or_default();
+
+        let start = if first {
+            first = false;
+            recs.len().saturating_sub(args.history)
+        } else {
+            printed
+        };
+
+        for r in recs.iter().skip(start) {
+            let exe = apps.get(r.app_id).unwrap_or("?");
+            let title = if r.title_id == 0 { "" } else { titles.get(r.title_id).unwrap_or("") };
+            let exe_short = std::path::Path::new(exe)
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| exe.to_string());
+            let title_part = if title.is_empty() { String::new() } else { format!(" │ {title}") };
+            println!(
+                "[+{:>5}s for {:>4}s] {}{}",
+                r.start_offset_secs, r.duration_secs, exe_short, title_part
+            );
+        }
+        printed = recs.len();
+
+        if args.once { break; }
+        std::thread::sleep(Duration::from_secs(args.interval.max(1)));
+    }
+    Ok(())
+}

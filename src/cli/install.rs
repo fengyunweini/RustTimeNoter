@@ -1,11 +1,10 @@
 //! 安装：HKCU 自启 / Windows 服务。
-
 #![cfg(windows)]
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use clap::{Args, ValueEnum};
+use lexopt::prelude::*;
 use windows_sys::Win32::Foundation::ERROR_SUCCESS;
 use windows_sys::Win32::System::Registry::{
     RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
@@ -15,24 +14,57 @@ use windows_sys::Win32::System::Registry::{
 use crate::paths::{AppPaths, InstallScope};
 use crate::{RUN_REG_VALUE, SERVICE_NAME};
 
-#[derive(Debug, Args)]
 pub struct InstallArgs {
-    #[arg(value_enum)]
     pub mode: Mode,
 }
 
-#[derive(Debug, Args)]
 pub struct UninstallArgs {
-    #[arg(value_enum)]
     pub mode: Mode,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    /// HKCU\Run 自启动（普通权限，登录时启动）。
     Autostart,
-    /// Windows 服务（需管理员权限）。
     Service,
+}
+
+const INSTALL_HELP: &str = "\
+tracker install <MODE>     安装
+tracker uninstall <MODE>   卸载
+
+MODE:
+    autostart   写 HKCU\\Run，不需要管理员
+    service     注册 Windows 服务，需要管理员权限
+";
+
+pub fn parse_install(p: &mut lexopt::Parser) -> Result<InstallArgs, lexopt::Error> {
+    Ok(InstallArgs { mode: parse_mode(p)? })
+}
+
+pub fn parse_uninstall(p: &mut lexopt::Parser) -> Result<UninstallArgs, lexopt::Error> {
+    Ok(UninstallArgs { mode: parse_mode(p)? })
+}
+
+fn parse_mode(p: &mut lexopt::Parser) -> Result<Mode, lexopt::Error> {
+    let mut mode: Option<Mode> = None;
+    while let Some(arg) = p.next()? {
+        match arg {
+            Short('h') | Long("help") => { print!("{INSTALL_HELP}"); std::process::exit(0); }
+            Value(v) => {
+                let s = v.to_string_lossy().into_owned();
+                mode = Some(match s.as_str() {
+                    "autostart" => Mode::Autostart,
+                    "service" => Mode::Service,
+                    other => return Err(lexopt::Error::UnexpectedValue {
+                        option: "<MODE>".into(),
+                        value: other.into(),
+                    }),
+                });
+            }
+            _ => return Err(arg.unexpected()),
+        }
+    }
+    mode.ok_or(lexopt::Error::MissingValue { option: Some("<MODE>".into()) })
 }
 
 pub fn install(args: InstallArgs) -> std::io::Result<()> {
@@ -77,8 +109,7 @@ fn copy_self_to(dest: &Path) -> std::io::Result<PathBuf> {
     if cur != dest {
         match std::fs::copy(&cur, dest) {
             Ok(_) => {}
-            Err(e) if e.raw_os_error() == Some(32) /* sharing violation */ => {
-                // 已在运行；尝试 .new + rename 模式不在此实现，提示用户
+            Err(e) if e.raw_os_error() == Some(32) => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::PermissionDenied,
                     format!("cannot overwrite {} (file in use). Stop the daemon first.", dest.display()),
@@ -97,15 +128,9 @@ fn set_run_value(name: &str, value: &str) -> std::io::Result<()> {
     unsafe {
         let mut hkey: HKEY = std::ptr::null_mut();
         let r = RegCreateKeyExW(
-            HKEY_CURRENT_USER,
-            subkey.as_ptr(),
-            0,
-            std::ptr::null_mut(),
-            REG_OPTION_NON_VOLATILE,
-            KEY_SET_VALUE,
-            std::ptr::null(),
-            &mut hkey,
-            std::ptr::null_mut(),
+            HKEY_CURRENT_USER, subkey.as_ptr(), 0, std::ptr::null_mut(),
+            REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, std::ptr::null(),
+            &mut hkey, std::ptr::null_mut(),
         );
         if r as u32 != ERROR_SUCCESS {
             return Err(std::io::Error::from_raw_os_error(r as i32));
@@ -114,14 +139,7 @@ fn set_run_value(name: &str, value: &str) -> std::io::Result<()> {
             value_w.as_ptr() as *const u8,
             value_w.len() * std::mem::size_of::<u16>(),
         );
-        let r2 = RegSetValueExW(
-            hkey,
-            name_w.as_ptr(),
-            0,
-            REG_SZ,
-            bytes.as_ptr(),
-            bytes.len() as u32,
-        );
+        let r2 = RegSetValueExW(hkey, name_w.as_ptr(), 0, REG_SZ, bytes.as_ptr(), bytes.len() as u32);
         RegCloseKey(hkey);
         if r2 as u32 != ERROR_SUCCESS {
             return Err(std::io::Error::from_raw_os_error(r2 as i32));
@@ -136,29 +154,23 @@ fn delete_run_value(name: &str) -> std::io::Result<()> {
     unsafe {
         let mut hkey: HKEY = std::ptr::null_mut();
         let r = RegCreateKeyExW(
-            HKEY_CURRENT_USER,
-            subkey.as_ptr(),
-            0,
-            std::ptr::null_mut(),
-            REG_OPTION_NON_VOLATILE,
-            KEY_SET_VALUE,
-            std::ptr::null(),
-            &mut hkey,
-            std::ptr::null_mut(),
+            HKEY_CURRENT_USER, subkey.as_ptr(), 0, std::ptr::null_mut(),
+            REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, std::ptr::null(),
+            &mut hkey, std::ptr::null_mut(),
         );
         if r as u32 != ERROR_SUCCESS {
             return Err(std::io::Error::from_raw_os_error(r as i32));
         }
         let r2 = RegDeleteValueW(hkey, name_w.as_ptr());
         RegCloseKey(hkey);
-        if r2 as u32 != ERROR_SUCCESS && r2 as u32 != 2 /* not found */ {
+        if r2 as u32 != ERROR_SUCCESS && r2 as u32 != 2 {
             return Err(std::io::Error::from_raw_os_error(r2 as i32));
         }
     }
     Ok(())
 }
 
-// ── Windows service ────────────────────────────────────────────────────
+// ── Windows service ───────────────────────────────────────────────────
 
 fn install_service() -> std::io::Result<()> {
     use windows_service::{
@@ -182,7 +194,7 @@ fn install_service() -> std::io::Result<()> {
         executable_path: target.clone(),
         launch_arguments: vec![OsString::from("service-main")],
         dependencies: vec![],
-        account_name: None, // LocalSystem
+        account_name: None,
         account_password: None,
     };
 
@@ -225,8 +237,6 @@ fn svc_io_err(e: windows_service::Error) -> std::io::Error {
     std::io::Error::other(e.to_string())
 }
 
-// ── Service entry-point dispatch ───────────────────────────────────────
-
 windows_service::define_windows_service!(ffi_service_main, service_main);
 
 fn service_main(_args: Vec<OsString>) {
@@ -243,11 +253,7 @@ fn service_main(_args: Vec<OsString>) {
         match control_event {
             ServiceControl::Stop | ServiceControl::Shutdown => {
                 let _ = stop_tx_for_handler.send(());
-                // 让 daemon 主线程 PostQuitMessage
-                unsafe {
-                    use windows_sys::Win32::UI::WindowsAndMessaging::PostQuitMessage;
-                    PostQuitMessage(0);
-                }
+                let _ = crate::daemon::runtime::signal_stop();
                 ServiceControlHandlerResult::NoError
             }
             ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
@@ -270,7 +276,6 @@ fn service_main(_args: Vec<OsString>) {
         process_id: None,
     });
 
-    // 标记 scope=machine
     std::env::set_var("RUSTTIMENOTER_SCOPE", "machine");
     let _ = crate::daemon::run(InstallScope::Machine);
 

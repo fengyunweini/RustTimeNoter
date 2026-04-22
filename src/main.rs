@@ -1,12 +1,17 @@
 // V1：保持 console 子系统，CLI 输出可见；daemon 模式下主动 FreeConsole 隐藏窗口。
 // 后续若要彻底无闪烁，可拆出 `trackerd.exe` 走 windows 子系统。
 
-use clap::Parser;
 use tracker::cli::{Cli, Cmd};
 use tracker::paths::{AppPaths, InstallScope};
 
 fn main() {
-    let cli = Cli::parse();
+    let cli = match Cli::parse() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(2);
+        }
+    };
     if let Err(e) = dispatch(cli) {
         eprintln!("error: {e}");
         std::process::exit(1);
@@ -32,6 +37,8 @@ fn dispatch(cli: Cli) -> std::io::Result<()> {
             Ok(())
         }
         Some(Cmd::Report(args)) => tracker::cli::report::run(args, &paths, machine_scope),
+        Some(Cmd::Status) => tracker::cli::status::run(&paths, machine_scope),
+        Some(Cmd::Tail(args)) => tracker::cli::tail::run(args, &paths, machine_scope),
         Some(Cmd::Export(args)) => tracker::cli::export::run(args, &paths, machine_scope),
         Some(Cmd::Config(args)) => tracker::cli::config_cmd::run(args, &paths),
         #[cfg(windows)]
