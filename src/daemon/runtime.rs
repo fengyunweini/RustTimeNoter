@@ -60,6 +60,11 @@ pub fn run(scope: InstallScope) -> std::io::Result<()> {
     let _hook = WinHook::install();
     let _msg_win = MessageWindow::create(cfg.idle_tick_secs)?;
 
+    // 启动托盘（独立线程，独立消息泵）。失败不致命。
+    let tray_handle = std::env::current_exe()
+        .ok()
+        .and_then(|exe| super::tray::spawn(exe, paths.root.clone()));
+
     // 注册 Ctrl handler（控制台模式下 Ctrl+C / close 触发）
     unsafe {
         MAIN_THREAD_ID.store(GetCurrentThreadId(), std::sync::atomic::Ordering::SeqCst);
@@ -96,6 +101,7 @@ pub fn run(scope: InstallScope) -> std::io::Result<()> {
     // 收尾：先关 hook & 消息窗口（不再产生事件），再发 Shutdown 给 aggregator → writer flush → join。
     drop(_msg_win);
     drop(_hook);
+    if let Some(t) = tray_handle { t.shutdown(); }
     hook::send_shutdown();
     let _ = aggregator_handle.join();
     let _ = wtx.send(WriterMsg::Shutdown);
