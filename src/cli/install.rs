@@ -237,6 +237,26 @@ fn svc_io_err(e: windows_service::Error) -> std::io::Error {
     std::io::Error::other(e.to_string())
 }
 
+/// Append a single line to %ProgramData%\RustTimeNoter\service-trace.log.
+/// Best-effort: never panics, never returns errors. Used to debug SCM start failures
+/// where the process has no console and no other observable output.
+fn trace(line: &str) {
+    use std::io::Write;
+    let path = std::env::var_os("ProgramData")
+        .map(|p| std::path::PathBuf::from(p).join("RustTimeNoter").join("service-trace.log"))
+        .unwrap_or_else(|| std::path::PathBuf::from("C:\\service-trace.log"));
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let _ = writeln!(f, "[{ts}] pid={} {}", std::process::id(), line);
+    }
+}
+
 windows_service::define_windows_service!(ffi_service_main, service_main);
 
 fn service_main(_args: Vec<OsString>) {
@@ -246,6 +266,8 @@ fn service_main(_args: Vec<OsString>) {
         ServiceType,
     };
     use windows_service::service_control_handler::{self, ServiceControlHandlerResult};
+
+    trace("service_main: enter");
 
     let (stop_tx, _stop_rx) = mpsc::channel::<()>();
     let stop_tx_for_handler: Sender<()> = stop_tx.clone();
@@ -262,11 +284,17 @@ fn service_main(_args: Vec<OsString>) {
     };
 
     let status_handle = match service_control_handler::register(SERVICE_NAME, event_handler) {
-        Ok(h) => h,
-        Err(_) => return,
+        Ok(h) => {
+            trace("service_main: handler registered");
+            h
+        }
+        Err(e) => {
+            trace(&format!("service_main: register handler FAILED: {e}"));
+            return;
+        }
     };
 
-    let _ = status_handle.set_service_status(ServiceStatus {
+    if let Err(e) = status_handle.set_service_status(ServiceStatus {
         service_type: ServiceType::OWN_PROCESS,
         current_state: ServiceState::Running,
         controls_accepted: ServiceControlAccept::STOP | ServiceControlAccept::SHUTDOWN,
@@ -274,10 +302,18 @@ fn service_main(_args: Vec<OsString>) {
         checkpoint: 0,
         wait_hint: std::time::Duration::default(),
         process_id: None,
-    });
+    }) {
+        trace(&format!("service_main: set_status(Running) FAILED: {e}"));
+    } else {
+        trace("service_main: set_status(Running) ok");
+    }
 
     std::env::set_var("RUSTTIMENOTER_SCOPE", "machine");
-    let _ = crate::daemon::run(InstallScope::Machine);
+    trace("service_main: calling daemon::run");
+    match crate::daemon::run(InstallScope::Machine) {
+        Ok(()) => trace("service_main: daemon::run returned Ok"),
+        Err(e) => trace(&format!("service_main: daemon::run returned Err: {e}")),
+    }
 
     let _ = status_handle.set_service_status(ServiceStatus {
         service_type: ServiceType::OWN_PROCESS,
@@ -288,11 +324,17 @@ fn service_main(_args: Vec<OsString>) {
         wait_hint: std::time::Duration::default(),
         process_id: None,
     });
+    trace("service_main: exit");
     let _ = stop_tx;
 }
 
 pub fn run_service_dispatcher() -> std::io::Result<()> {
     use windows_service::service_dispatcher;
-    service_dispatcher::start(SERVICE_NAME, ffi_service_main)
-        .map_err(svc_io_err)
+    trace("run_service_dispatcher: calling service_dispatcher::start");
+    let r = service_dispatcher::start(SERVICE_NAME, ffi_service_main);
+    match &r {
+        Ok(()) => trace("run_service_dispatcher: dispatcher returned Ok"),
+        Err(e) => trace(&format!("run_service_dispatcher: dispatcher returned Err: {e}")),
+    }
+    r.map_err(svc_io_err)
 }

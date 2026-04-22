@@ -57,6 +57,11 @@ Step "1. Check binary" {
 # 2. Cleanup any prior install (ignore errors)
 Step "2. Cleanup any prior install (ignore errors expected if not installed)" {
     .\target\release\tracker.exe uninstall service 2>&1 | Out-String
+    $tracePath = "$env:ProgramData\RustTimeNoter\service-trace.log"
+    if (Test-Path $tracePath) {
+        Remove-Item $tracePath -ErrorAction SilentlyContinue
+        "cleared old service-trace.log"
+    }
 }
 
 # 3. Install
@@ -128,6 +133,32 @@ Step "11. Final verify (should report no service)" {
     } catch {
         "OK: service removed ($($_.Exception.Message))"
     }
+}
+
+# 12. Dump service-trace.log written by the daemon process itself
+Step "12. service-trace.log (written by tracker.exe inside the service process)" {
+    $tracePath = "$env:ProgramData\RustTimeNoter\service-trace.log"
+    if (Test-Path $tracePath) {
+        Get-Content $tracePath -Raw
+    } else {
+        "WARNING: $tracePath not found -- service process never started, or never reached the trace point"
+    }
+}
+
+# 13. Last 30 SCM events for our service
+Step "13. Recent SCM events for RustTimeNoter" {
+    Get-WinEvent -LogName System -MaxEvents 200 -ErrorAction SilentlyContinue |
+        Where-Object { $_.Message -match 'RustTimeNoter' -and $_.TimeCreated -gt (Get-Date).AddMinutes(-5) } |
+        Select-Object TimeCreated, Id, ProviderName, LevelDisplayName, Message |
+        Format-List | Out-String
+}
+
+# 14. Recent app crash entries (if any)
+Step "14. Recent Application Errors (if any)" {
+    Get-WinEvent -LogName Application -MaxEvents 200 -ErrorAction SilentlyContinue |
+        Where-Object { $_.TimeCreated -gt (Get-Date).AddMinutes(-5) -and ($_.ProviderName -match 'Application Error|Windows Error') } |
+        Select-Object TimeCreated, Id, ProviderName, @{n='Msg';e={$_.Message.Substring(0,[Math]::Min(500,$_.Message.Length))}} |
+        Format-List | Out-String
 }
 
 "" | Out-File $logFile -Append -Encoding utf8
