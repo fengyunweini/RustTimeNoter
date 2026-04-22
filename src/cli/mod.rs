@@ -5,9 +5,12 @@ pub mod export;
 pub mod config_cmd;
 pub mod status;
 pub mod tail;
+pub mod view;
 
 #[cfg(windows)]
 pub mod install;
+#[cfg(windows)]
+pub mod setup;
 
 use lexopt::prelude::*;
 
@@ -22,6 +25,7 @@ pub enum Cmd {
     Status,
     Tail(tail::TailArgs),
     Report(report::ReportArgs),
+    View(view::ViewArgs),
     Export(export::ExportArgs),
     Config(config_cmd::ConfigArgs),
     #[cfg(windows)]
@@ -30,6 +34,8 @@ pub enum Cmd {
     Uninstall(install::UninstallArgs),
     #[cfg(windows)]
     ServiceMain,
+    #[cfg(windows)]
+    Setup,
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -41,9 +47,11 @@ USAGE:
     tracker [SUBCOMMAND]
 
 SUBCOMMANDS:
+    setup                 一键安装：autostart + 启动 daemon + 打开 HTML 报表
     run                   显式启动 daemon（默认无参也是这个行为）
     stop                  优雅停止正在运行的 daemon（命名事件）
     status                显示 daemon 运行状态、当日累计、数据目录大小
+    view [OPTS]           生成最近 N 天的 HTML 报表并用浏览器打开
     tail [OPTS]           实时跟随当日日志输出
     report [OPTS]         生成报表
     export [OPTS]         导出 CSV / JSON
@@ -78,6 +86,7 @@ impl Cli {
                         "status" => Cmd::Status,
                         "tail" => Cmd::Tail(tail::parse(&mut p)?),
                         "report" => Cmd::Report(report::parse(&mut p)?),
+                        "view" => Cmd::View(view::parse(&mut p)?),
                         "export" => Cmd::Export(export::parse(&mut p)?),
                         "config" => Cmd::Config(config_cmd::parse(&mut p)?),
                         #[cfg(windows)]
@@ -86,6 +95,8 @@ impl Cli {
                         "uninstall" => Cmd::Uninstall(install::parse_uninstall(&mut p)?),
                         #[cfg(windows)]
                         "service-main" => Cmd::ServiceMain,
+                        #[cfg(windows)]
+                        "setup" => Cmd::Setup,
                         "help" => {
                             print!("{HELP}");
                             std::process::exit(0);

@@ -39,6 +39,7 @@ fn dispatch(cli: Cli) -> std::io::Result<()> {
         Some(Cmd::Report(args)) => tracker::cli::report::run(args, &paths, machine_scope),
         Some(Cmd::Status) => tracker::cli::status::run(&paths, machine_scope),
         Some(Cmd::Tail(args)) => tracker::cli::tail::run(args, &paths, machine_scope),
+        Some(Cmd::View(args)) => tracker::cli::view::run(args, &paths, machine_scope),
         Some(Cmd::Export(args)) => tracker::cli::export::run(args, &paths, machine_scope),
         Some(Cmd::Config(args)) => tracker::cli::config_cmd::run(args, &paths),
         #[cfg(windows)]
@@ -47,6 +48,8 @@ fn dispatch(cli: Cli) -> std::io::Result<()> {
         Some(Cmd::Uninstall(args)) => tracker::cli::install::uninstall(args),
         #[cfg(windows)]
         Some(Cmd::ServiceMain) => tracker::cli::install::run_service_dispatcher(),
+        #[cfg(windows)]
+        Some(Cmd::Setup) => tracker::cli::setup::run(),
     }
 }
 
