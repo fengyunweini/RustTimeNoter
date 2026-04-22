@@ -1,7 +1,7 @@
 # RustTimeNoter (`tracker`)
 
 > Windows 独占的极低占用前台应用使用时长记录器。
-> 单二进制 ~1 MB，常驻内存 ~2 MB，CPU 99% 时间为 0%。
+> 单二进制 ~881 KB，常驻内存 ~2 MB，CPU 99% 时间为 0%。
 > 数据本地加密存储，10 年预算 1 GB，10 年实际预估 ~140 MB（未压缩）。
 
 ---
@@ -136,7 +136,7 @@ bin\tracker.exe      # autostart 模式的副本
 
 | 指标 | 值 |
 |---|---|
-| 二进制大小 | ~1.03 MB（release，stripped，LTO） |
+| 二进制大小 | ~881 KB（release，stripped，LTO，lexopt 取代 clap） |
 | 工作集（idle） | ~2-3 MB |
 | CPU（idle） | ~0.0% |
 | 每日数据写入 | ~10-100 KB（取决于切窗频率） |
@@ -160,4 +160,4 @@ cargo test
 - Windows 独占。Linux/macOS `tracker run` 会报错；CLI 子命令（report/export/config）跨平台可用（用于离线分析备份数据）。
 - 没有 GUI。所有交互走 CLI。
 - service 模式下日志文件归 `LocalSystem`，普通用户读取需先 `tracker stop` → 调整 ACL，或干脆用 user 模式。
-- 体积优化暂停在 1.03 MB；继续压到 < 800 KB 需要换掉 clap，权衡见 commit 历史。
+- 体积优化暂停在 881 KB；继续压到 < 500 KB 需要换掉 `aes-gcm`（手撸 GCM）以及精简 `windows-service`，权衡见 commit 历史。
