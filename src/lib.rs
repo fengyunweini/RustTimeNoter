@@ -21,3 +21,4 @@ pub const APP_NAME: &str = "RustTimeNoter";
 pub const SERVICE_NAME: &str = "RustTimeNoter";
 pub const RUN_REG_VALUE: &str = "RustTimeNoter";
 pub const MUTEX_NAME: &str = "Global\\RustTimeNoter.Daemon";
+pub const STOP_EVENT_NAME: &str = "Global\\RustTimeNoter.Stop";

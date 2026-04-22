@@ -20,6 +20,9 @@ pub struct Cli {
 pub enum Cmd {
     /// 显式启动 daemon（默认无参也是这个行为）。
     Run,
+    /// 优雅停止正在运行的 daemon（通过命名事件）。
+    #[cfg(windows)]
+    Stop,
     /// 生成报表。
     Report(report::ReportArgs),
     /// 导出 CSV / JSON。

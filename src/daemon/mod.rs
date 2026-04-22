@@ -7,6 +7,6 @@
 pub mod aggregator;
 pub mod resolver;
 pub mod hook;
-mod runtime;
+pub mod runtime;
 
 pub use runtime::run;

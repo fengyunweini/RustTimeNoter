@@ -5,9 +5,11 @@
 use std::sync::mpsc::{self};
 use std::thread;
 
-use windows_sys::Win32::Foundation::HWND;
+use windows_sys::Win32::Foundation::{BOOL, HANDLE, HWND};
+use windows_sys::Win32::System::Console::{SetConsoleCtrlHandler, CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT, CTRL_C_EVENT, CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT};
+use windows_sys::Win32::System::Threading::{CreateEventW, GetCurrentThreadId, WaitForSingleObject, INFINITE};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, GetMessageW, PostQuitMessage, TranslateMessage, MSG,
+    DispatchMessageW, GetMessageW, PostQuitMessage, PostThreadMessageW, TranslateMessage, MSG, WM_QUIT,
 };
 
 use super::aggregator::{Aggregator, Event};
@@ -16,6 +18,7 @@ use super::resolver;
 use crate::config::Config;
 use crate::paths::{AppPaths, InstallScope};
 use crate::storage::writer::{self, WriterConfig, WriterMsg};
+use crate::STOP_EVENT_NAME;
 
 pub fn run(scope: InstallScope) -> std::io::Result<()> {
     // 单实例锁
@@ -46,10 +49,6 @@ pub fn run(scope: InstallScope) -> std::io::Result<()> {
     let (htx, hrx) = mpsc::channel::<HookEvent>();
     hook::set_sender(htx);
 
-    // 把"业务循环"放在工作线程：消息线程只跑 GetMessage。
-    // 但 SetWinEventHook OUTOFCONTEXT 回调依赖该线程的消息循环；
-    // 所以让"主线程"跑 GetMessage（这里是 daemon 入口线程），
-    // 业务循环放在另一个线程里 `recv()` 处理 HookEvent。
     let aggregator_handle = {
         let cfg2 = cfg.clone();
         let wtx2 = wtx.clone();
@@ -59,18 +58,32 @@ pub fn run(scope: InstallScope) -> std::io::Result<()> {
             .spawn(move || aggregator_loop(cfg2, hrx, wtx2))?
     };
 
-    // 主线程：装 hook + 创建消息窗口 + 跑消息循环
+    // 装 hook + 创建消息窗口
     let _hook = WinHook::install();
     let _msg_win = MessageWindow::create(cfg.idle_tick_secs)?;
 
-    // 启动初始：触发一次 ForegroundChanged 让 aggregator 拿到当前窗口
-    if let Some(tx) = std::sync::OnceLock::new().get_or_init(|| ()).into() {
-        let _ = tx;
+    // 注册 Ctrl handler（控制台模式下 Ctrl+C / close 触发）
+    unsafe {
+        MAIN_THREAD_ID.store(GetCurrentThreadId(), std::sync::atomic::Ordering::SeqCst);
+        SetConsoleCtrlHandler(Some(ctrl_handler), 1);
     }
-    // 简化：直接通过 hook channel 不可用（已 move），改成 PostMessage 不需要——
-    // 让 aggregator 在收到第一次 IdleTick 时主动 resolve。
+    let main_tid = unsafe { GetCurrentThreadId() };
 
-    // GetMessage 循环
+    // 创建命名 Stop 事件并起一个 waiter 线程：被 signal 后 PostThreadMessage(WM_QUIT) 给主线程
+    let stop_event = create_stop_event()?;
+    let _waiter = thread::Builder::new()
+        .name("rtn-stop-wait".into())
+        .stack_size(32 * 1024)
+        .spawn(move || {
+            let ev = stop_event;
+            unsafe {
+                WaitForSingleObject(ev.0, INFINITE);
+                PostThreadMessageW(main_tid, WM_QUIT, 0, 0);
+            }
+            drop(ev);
+        })?;
+
+    // GetMessage 主循环
     unsafe {
         let mut msg: MSG = std::mem::zeroed();
         loop {
@@ -83,11 +96,12 @@ pub fn run(scope: InstallScope) -> std::io::Result<()> {
         }
     }
 
-    // 收尾
+    // 收尾：先关 hook & 消息窗口（不再产生事件），再发 Shutdown 给 aggregator → writer flush → join。
     drop(_msg_win);
     drop(_hook);
-    let _ = wtx.send(WriterMsg::Shutdown);
+    hook::send_shutdown();
     let _ = aggregator_handle.join();
+    let _ = wtx.send(WriterMsg::Shutdown);
     let _ = writer_handle.join();
     Ok(())
 }
@@ -106,7 +120,11 @@ fn aggregator_loop(
         for s in segs { let _ = wtx.send(WriterMsg::Segment(s)); }
     }
 
-    while let Ok(ev) = hrx.recv() {
+    loop {
+        let ev = match hrx.recv() {
+            Ok(e) => e,
+            Err(_) => HookEvent::Shutdown, // sender dropped (主循环退出) → 优雅收尾
+        };
         let now_t = now();
         let outs = match ev {
             HookEvent::ForegroundChanged | HookEvent::TitleChanged => {
@@ -136,6 +154,66 @@ fn aggregator_loop(
         for s in outs {
             let _ = wtx.send(WriterMsg::Segment(s));
         }
+    }
+}
+
+// ── Stop event (named) ─────────────────────────────────────────────────
+
+struct StopEvent(HANDLE);
+unsafe impl Send for StopEvent {}
+impl Drop for StopEvent {
+    fn drop(&mut self) {
+        unsafe { windows_sys::Win32::Foundation::CloseHandle(self.0); }
+    }
+}
+
+fn create_stop_event() -> std::io::Result<StopEvent> {
+    let name: Vec<u16> = STOP_EVENT_NAME.encode_utf16().chain(std::iter::once(0)).collect();
+    let h = unsafe {
+        // manual reset, initially non-signaled
+        CreateEventW(std::ptr::null(), 1, 0, name.as_ptr())
+    };
+    if h.is_null() {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(StopEvent(h))
+}
+
+/// 由外部 CLI (`tracker stop`) 调用：打开命名事件并 set，触发 daemon PostQuitMessage。
+pub fn signal_stop() -> std::io::Result<bool> {
+    use windows_sys::Win32::System::Threading::{OpenEventW, SetEvent, EVENT_MODIFY_STATE};
+    let name: Vec<u16> = STOP_EVENT_NAME.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        let h = OpenEventW(EVENT_MODIFY_STATE, 0, name.as_ptr());
+        if h.is_null() {
+            return Ok(false); // daemon 未运行
+        }
+        let ok = SetEvent(h);
+        windows_sys::Win32::Foundation::CloseHandle(h);
+        Ok(ok != 0)
+    }
+}
+
+// ── Console Ctrl handler ───────────────────────────────────────────────
+
+static MAIN_THREAD_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+unsafe extern "system" fn ctrl_handler(ctrl_type: u32) -> BOOL {
+    match ctrl_type {
+        CTRL_C_EVENT
+        | CTRL_BREAK_EVENT
+        | CTRL_CLOSE_EVENT
+        | CTRL_LOGOFF_EVENT
+        | CTRL_SHUTDOWN_EVENT => {
+            let tid = MAIN_THREAD_ID.load(std::sync::atomic::Ordering::SeqCst);
+            if tid != 0 {
+                unsafe { PostThreadMessageW(tid, WM_QUIT, 0, 0); }
+            } else {
+                unsafe { PostQuitMessage(0); }
+            }
+            1 // handled
+        }
+        _ => 0,
     }
 }
 
@@ -175,11 +253,6 @@ fn single_instance_guard() -> std::io::Result<MutexGuard> {
         return Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "another tracker daemon is running"));
     }
     Ok(MutexGuard { h })
-}
-
-#[allow(dead_code)]
-fn quit() {
-    unsafe { PostQuitMessage(0); }
 }
 
 // 让 HWND 类型出现，避免 unused import

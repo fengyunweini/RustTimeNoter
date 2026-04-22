@@ -21,6 +21,16 @@ fn dispatch(cli: Cli) -> std::io::Result<()> {
     match cli.command {
         None => run_daemon(scope),
         Some(Cmd::Run) => run_daemon(scope),
+        #[cfg(windows)]
+        Some(Cmd::Stop) => {
+            let signaled = tracker::daemon::runtime::signal_stop()?;
+            if signaled {
+                println!("Stop signal sent.");
+            } else {
+                println!("No running daemon found.");
+            }
+            Ok(())
+        }
         Some(Cmd::Report(args)) => tracker::cli::report::run(args, &paths, machine_scope),
         Some(Cmd::Export(args)) => tracker::cli::export::run(args, &paths, machine_scope),
         Some(Cmd::Config(args)) => tracker::cli::config_cmd::run(args, &paths),

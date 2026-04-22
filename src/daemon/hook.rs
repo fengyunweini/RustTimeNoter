@@ -46,6 +46,11 @@ pub fn set_sender(tx: Sender<HookEvent>) {
     let _ = SENDER.set(tx);
 }
 
+/// 显式让 aggregator 退出循环。runtime 收尾时调用。
+pub fn send_shutdown() {
+    send(HookEvent::Shutdown);
+}
+
 // ── WinEventProc ────────────────────────────────────────────────────────
 
 unsafe extern "system" fn win_event_proc(
