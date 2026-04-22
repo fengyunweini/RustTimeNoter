@@ -1,0 +1,17 @@
+# Build artifacts
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# Local data (在用户机上才会出现，但仓库里防误提交)
+/data
+/dev-data
+*.log
+crash.log
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
