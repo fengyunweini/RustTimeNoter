@@ -1,7 +1,8 @@
 # RustTimeNoter (`tracker`)
 
 > Windows 独占的极低占用前台应用使用时长记录器。
-> 单二进制 ~881 KB，常驻内存 ~2 MB，CPU 99% 时间为 0%。
+> 单二进制 ~959 KB，常驻内存 ~2 MB，CPU 99% 时间为 0%。
+> 系统托盘右键菜单 / 自包含 HTML 报表 / zip 安装包 ~452 KB。
 > 数据本地加密存储，10 年预算 1 GB，10 年实际预估 ~140 MB（未压缩）。
 
 ---
@@ -20,7 +21,25 @@
 
 ## 安装
 
-### 方案 A：HKCU 自启动（普通权限，推荐日常使用）
+### 快速开始（双击 install.bat，推荐）
+
+1. 下载最新的 `RustTimeNoter-vX.Y.Z.zip`（[Releases](https://github.com/) 页面）
+2. 解压到任意目录
+3. 双击 `install.bat`
+4. 浏览器自动打开 HTML 报表；daemon 已在后台运行
+5. 下次开机自动启动（HKCU autostart，无需管理员权限）
+
+解压后目录：
+```
+RustTimeNoter/
+  install.bat     ← 双击安装（自启 + 拉起 daemon + 打开报表）
+  view.bat        ← 双击查看报表
+  uninstall.bat   ← 双击卸载
+  tracker.exe     ← 单二进制（命令行入口）
+  README.txt      ← 简要说明
+```
+
+### 方案 A：HKCU 自启动（命令行，普通权限）
 
 ```powershell
 .\tracker.exe install autostart
@@ -55,6 +74,8 @@ Start-Service RustTimeNoter
 
 | 命令 | 说明 |
 |---|---|
+| `tracker setup` | 一键安装：autostart + 启动 daemon + 打开 HTML 报表 |
+| `tracker view [--days N] [--no-open] [--out PATH]` | 生成最近 N 天的自包含 HTML 报表（深色卡片 + 条形图），并用默认浏览器打开 |
 | `tracker` 或 `tracker run` | 前台启动 daemon（dev/调试用） |
 | `tracker stop` | 通过命名事件通知 daemon 优雅退出（flush 缓冲） |
 | `tracker status` | 查看 daemon 是否在跑、当日累计、数据目录大小 |
@@ -126,8 +147,9 @@ bin\tracker.exe      # autostart 模式的副本
 - ✅ 锁屏：监听 `WM_WTSSESSION_CHANGE` (`WTS_SESSION_LOCK`/`UNLOCK`)，suppress 期间不计时
 - ✅ 休眠：`WM_POWERBROADCAST` (`PBT_APMSUSPEND`/`PBT_APMRESUMEAUTOMATIC`)
 - ✅ UWP：检测到前台为 `ApplicationFrameHost.exe` 时遍历子窗口找 PID 不同的真实承载进程
-- ✅ 优雅停机：`tracker stop`（命名事件）/ Ctrl+C / SCM Stop / 控制台关闭 → flush 后退出
-- ✅ 单实例：命名 mutex `Global\RustTimeNoter.Daemon`
+- ✅ 优雅停机：`tracker stop`（命名事件）/ Ctrl+C / SCM Stop / 控制台关闭 / 注销 / 关机 → flush 后退出
+- ✅ 单实例：命名 mutex `Global\RustTimeNoter.Daemon`（重复运行立即退出，不打架）
+- ✅ 系统托盘：右键 Open report / Open data folder / Stop tracking；双击 = 打开报表
 - ✅ 崩溃恢复：日志 reader 在解密失败/截断处停下，后续 block 丢弃，不 panic
 
 ---
@@ -136,7 +158,8 @@ bin\tracker.exe      # autostart 模式的副本
 
 | 指标 | 值 |
 |---|---|
-| 二进制大小 | ~881 KB（release，stripped，LTO，lexopt 取代 clap） |
+| 二进制大小 | ~959 KB（release，stripped，LTO，lexopt + tray ~+5 KB） |
+| zip 安装包 | ~452 KB |
 | 工作集（idle） | ~2-3 MB |
 | CPU（idle） | ~0.0% |
 | 每日数据写入 | ~10-100 KB（取决于切窗频率） |
@@ -157,7 +180,6 @@ cargo test
 
 ## 已知限制
 
-- Windows 独占。Linux/macOS `tracker run` 会报错；CLI 子命令（report/export/config）跨平台可用（用于离线分析备份数据）。
-- 没有 GUI。所有交互走 CLI。
+- Windows 独占。Linux/macOS `tracker run` 会报错；CLI 子命令（report/export/config/view）跨平台可用（用于离线分析备份数据）。
+- 没有 GUI。所有交互走 CLI 或系统托盘 + 浏览器看报表。
 - service 模式下日志文件归 `LocalSystem`，普通用户读取需先 `tracker stop` → 调整 ACL，或干脆用 user 模式。
-- 体积优化暂停在 881 KB；继续压到 < 500 KB 需要换掉 `aes-gcm`（手撸 GCM）以及精简 `windows-service`，权衡见 commit 历史。

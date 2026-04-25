@@ -15,3 +15,6 @@ crash.log
 *.swp
 .DS_Store
 Thumbs.db
+
+# Installer artifact
+*.zip
