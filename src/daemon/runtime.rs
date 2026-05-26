@@ -119,7 +119,9 @@ fn aggregator_loop(
     // 立即解析一次当前前台窗口
     if let Some(app) = resolver::resolve_foreground(cfg.capture_titles, cfg.title_max_chars as usize) {
         let key = strip_blacklisted_title(&cfg, app);
-        let segs = agg.handle(Event::Foreground { app: key, t: now() });
+        let t0 = now();
+        let li = t0.saturating_sub(crate::platform::windows::seconds_since_last_input());
+        let segs = agg.handle(Event::Foreground { app: key, t: t0, last_input: li });
         for s in segs { let _ = wtx.send(WriterMsg::Segment(s)); }
     }
 
@@ -133,7 +135,8 @@ fn aggregator_loop(
             HookEvent::ForegroundChanged | HookEvent::TitleChanged => {
                 if let Some(app) = resolver::resolve_foreground(cfg.capture_titles, cfg.title_max_chars as usize) {
                     let app = strip_blacklisted_title(&cfg, app);
-                    agg.handle(Event::Foreground { app, t: now_t })
+                    let li = now_t.saturating_sub(crate::platform::windows::seconds_since_last_input());
+                    agg.handle(Event::Foreground { app, t: now_t, last_input: li })
                 } else {
                     Vec::new()
                 }
@@ -141,7 +144,19 @@ fn aggregator_loop(
             HookEvent::IdleTick => {
                 let idle_secs = crate::platform::windows::seconds_since_last_input();
                 let last_input = now_t.saturating_sub(idle_secs);
-                agg.handle(Event::IdleTick { now: now_t, last_input })
+                let mut outs = agg.handle(Event::IdleTick { now: now_t, last_input });
+                // “AFK 后恢复”：用户又动了（idle 很短）但 agg 空闲 ——
+                // 可能是上一次 AFK 裁掉后用户不切窗继续在同一个 app 里打字。
+                // 补一个 Foreground 事件重启跟踪。
+                if idle_secs < cfg.afk_threshold_secs() && !agg.is_active() && !agg.is_suppressed() {
+                    if let Some(app) = resolver::resolve_foreground(cfg.capture_titles, cfg.title_max_chars as usize) {
+                        let app = strip_blacklisted_title(&cfg, app);
+                        // 以 last_input 作为段开始（用户真正“回来”的时点），
+                        // 不从 now_t 起 —— 避免丢掉 AFK 后、本轮 tick 前这小段真实活动。
+                        outs.extend(agg.handle(Event::Foreground { app, t: last_input, last_input }));
+                    }
+                }
+                outs
             }
             HookEvent::SessionLock => agg.handle(Event::SessionLock { t: now_t }),
             HookEvent::SessionUnlock => agg.handle(Event::SessionUnlock { t: now_t }),
