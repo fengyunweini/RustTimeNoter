@@ -10,7 +10,7 @@ use super::writer::{unix_to_utc_date, utc_midnight_unix};
 use crate::local_time::Calendar;
 use crate::paths::AppPaths;
 
-const MAX_QUERY_DAYS: i64 = 3_660;
+pub(crate) const MAX_QUERY_DAYS: u64 = 3_660;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LocalRecordSlice {
@@ -157,13 +157,9 @@ fn build_day_boundaries<C: Calendar + ?Sized>(
             "`from` must not be after `to`",
         ));
     }
-    let inclusive_days = to.signed_duration_since(from).num_days() + 1;
-    if inclusive_days > MAX_QUERY_DAYS {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("local date range contains {inclusive_days} days; maximum is {MAX_QUERY_DAYS}"),
-        ));
-    }
+    let inclusive_days = u64::try_from(to.signed_duration_since(from).num_days() + 1)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid local date range"))?;
+    validate_query_day_count(inclusive_days)?;
 
     let mut days: Vec<DayBoundary> = Vec::with_capacity(inclusive_days as usize + 1);
     let mut date = from;
@@ -189,6 +185,22 @@ fn build_day_boundaries<C: Calendar + ?Sized>(
     Ok(days)
 }
 
+pub(crate) fn validate_query_day_count(days: u64) -> io::Result<()> {
+    if days == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "local date range must contain at least one day",
+        ));
+    }
+    if days > MAX_QUERY_DAYS {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("local date range contains {days} days; maximum is {MAX_QUERY_DAYS}"),
+        ));
+    }
+    Ok(())
+}
+
 fn invalid_data(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
@@ -198,7 +210,9 @@ mod tests {
     use chrono::{Days, NaiveDate, TimeZone, Utc};
     use chrono_tz::Tz;
 
-    use super::{read_local_date_range, visit_local_date_range};
+    use super::{
+        read_local_date_range, validate_query_day_count, visit_local_date_range, MAX_QUERY_DAYS,
+    };
     use crate::local_time::{Calendar, TestCalendar};
     use crate::paths::AppPaths;
     use crate::storage::crypto::{Cipher, MasterKey};
@@ -431,6 +445,13 @@ mod tests {
         let err = read_local_date_range(&paths, &cipher, &calendar, from, to).unwrap_err();
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
         assert!(err.to_string().contains("maximum is 3660"));
+    }
+
+    #[test]
+    fn query_day_limit_is_inclusive() {
+        validate_query_day_count(MAX_QUERY_DAYS).unwrap();
+        let err = validate_query_day_count(MAX_QUERY_DAYS + 1).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     }
 
     #[test]

@@ -11,7 +11,7 @@ use crate::local_time::{Calendar, SystemCalendar};
 use crate::paths::AppPaths;
 use crate::storage::crypto::{load_or_create_master_key, Cipher};
 use crate::storage::dict::Dict;
-use crate::storage::query::visit_local_date_range;
+use crate::storage::query::{validate_query_day_count, visit_local_date_range};
 use crate::storage::writer::now_unix;
 
 pub struct ViewArgs {
@@ -57,10 +57,13 @@ pub fn parse(p: &mut lexopt::Parser) -> Result<ViewArgs, lexopt::Error> {
 }
 
 pub fn run(args: ViewArgs, paths: &AppPaths, machine_scope: bool) -> std::io::Result<()> {
+    let days = args.days.max(1);
+    validate_query_day_count(u64::from(days))?;
+
     let calendar = SystemCalendar::new();
     let today = calendar.today_at(now_unix())?;
     let from = today
-        .checked_sub_days(Days::new(args.days.saturating_sub(1) as u64))
+        .checked_sub_days(Days::new(u64::from(days - 1)))
         .ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -113,7 +116,7 @@ pub fn run(args: ViewArgs, paths: &AppPaths, machine_scope: bool) -> std::io::Re
     overall.sort_by(|a, b| b.1.cmp(&a.1));
     let overall_total: u64 = overall.iter().map(|(_, v)| *v).sum();
 
-    let html = render_html(&overall, overall_total, &by_day, args.days, &paths.root);
+    let html = render_html(&overall, overall_total, &by_day, days, &paths.root);
 
     let out_path = match args.out.clone() {
         Some(p) => p,
@@ -316,6 +319,8 @@ fn open_in_browser(_path: &Path) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use crate::storage::query::MAX_QUERY_DAYS;
+
     use super::*;
 
     #[test]
@@ -332,6 +337,28 @@ mod tests {
                 to,
             ]
         );
+    }
+
+    #[test]
+    fn excessive_days_fail_before_allocating_or_loading_the_key() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = AppPaths::from_root(temp.path());
+        let err = run(
+            ViewArgs {
+                days: u32::MAX,
+                no_open: true,
+                out: None,
+            },
+            &paths,
+            false,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(err
+            .to_string()
+            .contains(&format!("maximum is {MAX_QUERY_DAYS}")));
+        assert!(!paths.key_file.exists());
     }
 
     #[test]
