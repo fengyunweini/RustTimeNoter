@@ -150,7 +150,7 @@ fn flush(
     Ok(())
 }
 
-/// 把 [start, end] 按 UTC 自然日切片，返回每段的 (start_unix, end_unix)。
+/// 把 [start, end) 按 UTC 自然日切片，返回每段的 (start_unix, end_unix)。
 fn split_by_day(start: u64, end: u64) -> Vec<(u64, u64)> {
     let mut out = Vec::new();
     let mut s = start;

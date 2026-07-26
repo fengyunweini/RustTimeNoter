@@ -6,6 +6,7 @@
 pub mod paths;
 pub mod config;
 pub mod classifier;
+pub mod local_time;
 pub mod storage;
 
 #[cfg(windows)]

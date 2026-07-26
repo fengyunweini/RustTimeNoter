@@ -17,6 +17,7 @@ lexopt = "0.3"
 regex = { version = "1", default-features = false, features = ["std", "unicode-case"] }
 aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
 rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
@@ -41,6 +42,7 @@ windows-sys = { version = "0.59", features = [
 windows-service = "0.7"
 
 [dev-dependencies]
+chrono-tz = "0.10"
 tempfile = "3"
 
 [profile.release]

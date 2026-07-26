@@ -5,7 +5,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2B-blue?logo=windows" alt="Platform: Windows 10+">
-  <img src="https://img.shields.io/badge/binary-~959%20KB-brightgreen" alt="Binary: ~959 KB">
+  <img src="https://img.shields.io/badge/binary-~1.0%20MB-brightgreen" alt="Binary: ~1.0 MB">
   <img src="https://img.shields.io/badge/memory-~2%20MB-brightgreen" alt="Memory: ~2 MB">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT">
 </p>
@@ -14,7 +14,7 @@
 
 **Ultra-light Windows foreground-app usage tracker.**
 
-A single ~959 KB binary. ~2 MB working set. Event-driven — zero polling, near-zero CPU.
+A single ~1.0 MB binary. ~2 MB working set. Event-driven — zero polling, near-zero CPU.
 Runs in the background, records which apps you use (and for how long),
 and renders a self-contained HTML report in your browser.
 
@@ -61,8 +61,8 @@ RustTimeNoter/
 | `tracker view [--days N]` | Generate an HTML report and open it in the browser |
 | `tracker run` | Start the daemon in the foreground (dev / debugging) |
 | `tracker stop` | Graceful shutdown via named event (flushes buffers) |
-| `tracker status` | Daemon status, today's totals, data directory size |
-| `tracker tail [--interval 2]` | Follow today's log in real time |
+| `tracker status` | Daemon status, today's local-time totals, data directory size |
+| `tracker tail [--interval 2]` | Follow today's local-time activity in real time |
 | `tracker report [--today\|--week\|--month\|--from\|--to] [--by app\|category\|title] [--top N]` | Console report |
 | `tracker export --format csv\|json [--out PATH]` | Export raw records |
 | `tracker config show\|init\|set <K> <V>\|get <K>` | Read/write configuration |
@@ -114,8 +114,8 @@ Runs as `LocalSystem`, can read all process info, starts before user logon.
 
 | Metric | Value |
 |---|---|
-| Binary size | ~959 KB (release, stripped, LTO) |
-| Zip installer | ~452 KB |
+| Binary size | ~1.0 MB (release, stripped, LTO) |
+| Zip installer | ~486 KB |
 | Working set (idle) | ~2–3 MB |
 | CPU (idle) | ~0.0% |
 | Daily data written | ~10–100 KB (depends on window-switch frequency) |
@@ -132,14 +132,25 @@ rules.toml             Classification rules (optional)
 key.bin                AES-256 master key (DPAPI-wrapped)
 apps.dict              String pool: exe paths
 titles.dict            String pool: window titles
-data\YYYY\MM\YYYY-MM-DD.log   Daily encrypted log
+data\YYYY\MM\YYYY-MM-DD.log   Encrypted UTC-day shard
 bin\tracker.exe        Autostart binary copy
 ```
+
+### Time Zones
+
+- Storage stays lean and unchanged: format-v1 logs are sharded by UTC day. No duplicate
+  local-time files and no migration.
+- All user-facing dates and times default to the current system time zone. Queries scan
+  the required UTC shards and clip records at local calendar boundaries.
+- Export includes `start_timestamp` as RFC 3339 with an explicit numeric UTC offset.
+- A daylight-saving local day may be 23 or 25 hours.
+- Changing the system time zone re-buckets historical records at query time; encrypted
+  source data is never rewritten.
 
 ### File Format
 
 - **`.dict`** — magic `RTND`, version, series of `[u32 len][bytes]`. Append-only; ID 0 reserved.
-- **`.log`** — magic `RTNL`, version, `date_packed`, series of encrypted blocks.
+- **`.log`** — format v1, magic `RTNL`, UTC `date_packed`, series of encrypted blocks.
   Each block: `[u32 plain_len][12 B nonce][ciphertext + tag]`.
   AAD = `magic ‖ date_packed ‖ block_index`.
   Plaintext = N × 17-byte fixed records (`u32 start_offset ‖ u32 duration ‖ u32 app_id ‖ u32 title_id ‖ u8 flags`).

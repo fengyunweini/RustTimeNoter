@@ -5,7 +5,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2B-blue?logo=windows" alt="平台：Windows 10+">
-  <img src="https://img.shields.io/badge/二进制-~959%20KB-brightgreen" alt="二进制：~959 KB">
+  <img src="https://img.shields.io/badge/二进制-~1.0%20MB-brightgreen" alt="二进制：~1.0 MB">
   <img src="https://img.shields.io/badge/内存-~2%20MB-brightgreen" alt="内存：~2 MB">
   <img src="https://img.shields.io/badge/协议-MIT-blue" alt="协议：MIT">
 </p>
@@ -14,7 +14,7 @@
 
 **超轻量 Windows 前台应用使用时长记录器。**
 
-单个二进制 ~959 KB，常驻内存 ~2 MB，事件驱动、零轮询、CPU 基本为 0%。
+单个二进制 ~1.0 MB，常驻内存 ~2 MB，事件驱动、零轮询、CPU 基本为 0%。
 后台静默运行，加密存储每条应用使用记录，并可随时生成自包含 HTML 报表在浏览器中查看。
 
 - **无运行时、无框架** — 纯 `windows-sys` 调 Win32 API。
@@ -58,8 +58,8 @@ RustTimeNoter/
 | `tracker view [--days N]` | 生成最近 N 天的自包含 HTML 报表并用浏览器打开 |
 | `tracker run` | 前台启动 daemon（开发 / 调试用） |
 | `tracker stop` | 通过命名事件通知 daemon 优雅退出（flush 缓冲后关闭） |
-| `tracker status` | 查看 daemon 运行状态、当日累计、数据目录大小 |
-| `tracker tail [--interval 2]` | 实时跟随当日日志输出 |
+| `tracker status` | 查看 daemon 运行状态、本地当日累计、数据目录大小 |
+| `tracker tail [--interval 2]` | 实时跟随本地当日活动 |
 | `tracker report [--today\|--week\|--month\|--from\|--to] [--by app\|category\|title] [--top N]` | 控制台报表 |
 | `tracker export --format csv\|json [--out PATH]` | 导出原始记录 |
 | `tracker config show\|init\|set <K> <V>\|get <K>` | 读写配置项 |
@@ -109,8 +109,8 @@ tracker uninstall service
 
 | 指标 | 值 |
 |---|---|
-| 二进制大小 | ~959 KB（release，stripped，LTO） |
-| Zip 安装包 | ~452 KB |
+| 二进制大小 | ~1.0 MB（release，stripped，LTO） |
+| Zip 安装包 | ~486 KB |
 | 工作集（idle） | ~2–3 MB |
 | CPU（idle） | ~0.0% |
 | 每日数据量 | ~10–100 KB（取决于切窗频率） |
@@ -127,14 +127,22 @@ rules.toml             分类规则（可选）
 key.bin                由 DPAPI 包裹的 AES-256 主密钥
 apps.dict              字符串池：exe 路径
 titles.dict            字符串池：窗口标题
-data\YYYY\MM\YYYY-MM-DD.log   每日加密日志
+data\YYYY\MM\YYYY-MM-DD.log   按 UTC 日分片的加密日志
 bin\tracker.exe        autostart 模式下的二进制副本
 ```
+
+### 时区语义
+
+- 存储层保持轻量且不变：format v1 日志继续按 UTC 日分片，不复制本地日文件，也无需迁移。
+- 所有面向用户的日期和时间默认使用当前系统时区；查询时按本地日历边界扫描并裁切所需 UTC 分片。
+- 导出新增 `start_timestamp`，使用带明确数字 offset 的 RFC 3339 时间戳。
+- 遇到夏令时切换，本地自然日可能是 23 或 25 小时。
+- 修改系统时区后，历史记录会在查询时按新时区重新归日；加密源数据不会重写。
 
 ### 文件格式
 
 - **`.dict`** — magic `RTND` + version + 连续 `[u32 len][bytes]`。append-only，ID 0 保留。
-- **`.log`** — magic `RTNL` + version + `date_packed` + 连续加密 block。
+- **`.log`** — format v1，magic `RTNL` + UTC `date_packed` + 连续加密 block。
   每个 block：`[u32 plain_len][12 B nonce][ciphertext + tag]`。
   AAD = `magic ‖ date_packed ‖ block_index`。
   Plaintext = N × 17 字节定长 record（`u32 start_offset ‖ u32 duration ‖ u32 app_id ‖ u32 title_id ‖ u8 flags`）。

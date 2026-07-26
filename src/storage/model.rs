@@ -1,6 +1,6 @@
 //! 跨模块共享的数据模型。
 
-/// 聚合器输出给写入器的"原始段"。已是闭区间 [start_unix, end_unix]。
+/// 聚合器输出给写入器的"原始段"。采用半开区间 [start_unix, end_unix)。
 /// 跨日由 writer 自行拆分。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Segment {

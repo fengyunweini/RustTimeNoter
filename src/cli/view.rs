@@ -4,19 +4,23 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use chrono::{Days, NaiveDate};
 use lexopt::prelude::*;
 
+use crate::local_time::{Calendar, SystemCalendar};
 use crate::paths::AppPaths;
 use crate::storage::crypto::{load_or_create_master_key, Cipher};
 use crate::storage::dict::Dict;
-use crate::storage::log::{LogDate, LogReader};
-use crate::storage::writer::{now_unix, unix_to_utc_date, utc_midnight_unix};
+use crate::storage::query::visit_local_date_range;
+use crate::storage::writer::now_unix;
 
 pub struct ViewArgs {
     pub days: u32,
     pub no_open: bool,
     pub out: Option<PathBuf>,
 }
+
+type DayRows = (NaiveDate, Vec<(String, u64)>, u64);
 
 const VIEW_HELP: &str = "\
 tracker view — 生成最近若干天的 HTML 报表，并用默认浏览器打开
@@ -29,49 +33,81 @@ OPTIONS:
 ";
 
 pub fn parse(p: &mut lexopt::Parser) -> Result<ViewArgs, lexopt::Error> {
-    let mut args = ViewArgs { days: 7, no_open: false, out: None };
+    let mut args = ViewArgs {
+        days: 7,
+        no_open: false,
+        out: None,
+    };
     while let Some(arg) = p.next()? {
         match arg {
-            Short('h') | Long("help") => { print!("{VIEW_HELP}"); std::process::exit(0); }
+            Short('h') | Long("help") => {
+                print!("{VIEW_HELP}");
+                std::process::exit(0);
+            }
             Long("days") => args.days = p.value()?.parse()?,
             Long("no-open") => args.no_open = true,
             Long("out") => args.out = Some(PathBuf::from(p.value()?.string()?)),
             _ => return Err(arg.unexpected()),
         }
     }
-    if args.days == 0 { args.days = 1; }
+    if args.days == 0 {
+        args.days = 1;
+    }
     Ok(args)
 }
 
 pub fn run(args: ViewArgs, paths: &AppPaths, machine_scope: bool) -> std::io::Result<()> {
+    let calendar = SystemCalendar::new();
+    let today = calendar.today_at(now_unix())?;
+    let from = today
+        .checked_sub_days(Days::new(args.days.saturating_sub(1) as u64))
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "date range is out of bounds",
+            )
+        })?;
+
     let key = load_or_create_master_key(&paths.key_file, machine_scope)?;
     let cipher = Cipher::new(&key);
     let apps = Dict::open(&paths.apps_dict)?;
 
-    let today = unix_to_utc_date(now_unix());
-    let from_unix = utc_midnight_unix(today).saturating_sub((args.days as u64 - 1) * 86400);
-    let from = unix_to_utc_date(from_unix);
-
-    let mut by_day: Vec<(LogDate, Vec<(String, u64)>, u64)> = Vec::new();
+    let mut day_totals: Vec<(NaiveDate, HashMap<String, u64>)> = calendar_dates(from, today)?
+        .into_iter()
+        .map(|date| (date, HashMap::new()))
+        .collect();
     let mut by_app_total: HashMap<String, u64> = HashMap::new();
 
-    let mut date = from;
-    while date <= today {
-        let path = paths.log_file_for_day(date.year, date.month, date.day);
-        let recs = LogReader::new(cipher.clone(), date).read_all(&path).unwrap_or_default();
-        let mut day_totals: HashMap<String, u64> = HashMap::new();
-        for r in &recs {
-            let exe = apps.get(r.app_id).unwrap_or("?");
-            let name = display_app(exe);
-            *day_totals.entry(name.clone()).or_insert(0) += r.duration_secs as u64;
-            *by_app_total.entry(name).or_insert(0) += r.duration_secs as u64;
-        }
-        let day_total: u64 = day_totals.values().sum();
-        let mut rows: Vec<_> = day_totals.into_iter().collect();
-        rows.sort_by(|a, b| b.1.cmp(&a.1));
-        by_day.push((date, rows, day_total));
-        date = next_day(date);
-    }
+    visit_local_date_range(paths, &cipher, &calendar, from, today, |r| {
+        let exe = apps.get(r.app_id).unwrap_or("?");
+        let name = display_app(exe);
+        let day_index = r.local_date.signed_duration_since(from).num_days();
+        let day_index = usize::try_from(day_index).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "query returned a date before the requested range",
+            )
+        })?;
+        let (_, totals) = day_totals.get_mut(day_index).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "query returned a date after the requested range",
+            )
+        })?;
+        *totals.entry(name.clone()).or_insert(0) += r.duration_secs as u64;
+        *by_app_total.entry(name).or_insert(0) += r.duration_secs as u64;
+        Ok(())
+    })?;
+
+    let by_day: Vec<DayRows> = day_totals
+        .into_iter()
+        .map(|(date, totals)| {
+            let day_total: u64 = totals.values().sum();
+            let mut rows: Vec<_> = totals.into_iter().collect();
+            rows.sort_by(|a, b| b.1.cmp(&a.1));
+            (date, rows, day_total)
+        })
+        .collect();
 
     let mut overall: Vec<_> = by_app_total.into_iter().collect();
     overall.sort_by(|a, b| b.1.cmp(&a.1));
@@ -81,10 +117,7 @@ pub fn run(args: ViewArgs, paths: &AppPaths, machine_scope: bool) -> std::io::Re
 
     let out_path = match args.out.clone() {
         Some(p) => p,
-        None => std::env::temp_dir().join(format!(
-            "rusttimenoter-{}-{:02}-{:02}.html",
-            today.year, today.month, today.day
-        )),
+        None => std::env::temp_dir().join(format!("rusttimenoter-{today}.html")),
     };
     std::fs::write(&out_path, html.as_bytes())?;
     println!("Report: {}", out_path.display());
@@ -102,22 +135,42 @@ fn display_app(exe_path: &str) -> String {
         .unwrap_or_else(|| exe_path.to_string())
 }
 
-fn next_day(d: LogDate) -> LogDate {
-    let t = utc_midnight_unix(d) + 86400;
-    unix_to_utc_date(t)
+fn calendar_dates(from: NaiveDate, to: NaiveDate) -> std::io::Result<Vec<NaiveDate>> {
+    let count = to.signed_duration_since(from).num_days();
+    if count < 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "start date is after end date",
+        ));
+    }
+    (0..=count)
+        .map(|offset| {
+            from.checked_add_days(Days::new(offset as u64))
+                .ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "date range is out of bounds",
+                    )
+                })
+        })
+        .collect()
 }
 
 fn fmt_dur(secs: u64) -> String {
     let h = secs / 3600;
     let m = (secs % 3600) / 60;
     let s = secs % 60;
-    if h > 0 { format!("{h}h {m:02}m {s:02}s") }
-    else if m > 0 { format!("{m}m {s:02}s") }
-    else { format!("{s}s") }
+    if h > 0 {
+        format!("{h}h {m:02}m {s:02}s")
+    } else if m > 0 {
+        format!("{m}m {s:02}s")
+    } else {
+        format!("{s}s")
+    }
 }
 
-fn fmt_date(d: LogDate) -> String {
-    format!("{:04}-{:02}-{:02}", d.year, d.month, d.day)
+fn fmt_date(d: NaiveDate) -> String {
+    d.to_string()
 }
 
 fn html_escape(s: &str) -> String {
@@ -138,7 +191,7 @@ fn html_escape(s: &str) -> String {
 fn render_html(
     overall: &[(String, u64)],
     overall_total: u64,
-    by_day: &[(LogDate, Vec<(String, u64)>, u64)],
+    by_day: &[DayRows],
     days: u32,
     data_root: &Path,
 ) -> String {
@@ -198,7 +251,10 @@ footer{color:var(--muted);font-size:11px;margin-top:24px;text-align:center}\
     for (date, rows, day_total) in by_day.iter().rev() {
         s.push_str("<div class=\"card\">");
         s.push_str(&format!("<h2>{}</h2>", fmt_date(*date)));
-        s.push_str(&format!("<div class=\"day-total\">{}</div>", fmt_dur(*day_total)));
+        s.push_str(&format!(
+            "<div class=\"day-total\">{}</div>",
+            fmt_dur(*day_total)
+        ));
         if rows.is_empty() {
             s.push_str("<div class=\"empty\">No records.</div>");
         } else {
@@ -228,7 +284,11 @@ fn open_in_browser(path: &Path) -> std::io::Result<()> {
     use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
     let verb: Vec<u16> = "open\0".encode_utf16().collect();
-    let file: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let file: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
     let r = unsafe {
         ShellExecuteW(
             std::ptr::null_mut(),
@@ -236,13 +296,14 @@ fn open_in_browser(path: &Path) -> std::io::Result<()> {
             file.as_ptr(),
             std::ptr::null(),
             std::ptr::null(),
-            SW_SHOWNORMAL as i32,
+            SW_SHOWNORMAL,
         )
     };
     // ShellExecuteW returns HINSTANCE; values <= 32 are errors.
     if (r as isize) <= 32 {
         return Err(std::io::Error::other(format!(
-            "ShellExecuteW failed (code {})", r as isize
+            "ShellExecuteW failed (code {})",
+            r as isize
         )));
     }
     Ok(())
@@ -251,4 +312,61 @@ fn open_in_browser(path: &Path) -> std::io::Result<()> {
 #[cfg(not(windows))]
 fn open_in_browser(_path: &Path) -> std::io::Result<()> {
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn requested_calendar_days_include_empty_boundaries() {
+        let from = NaiveDate::from_ymd_opt(2026, 1, 30).unwrap();
+        let to = NaiveDate::from_ymd_opt(2026, 2, 2).unwrap();
+        let dates = calendar_dates(from, to).unwrap();
+        assert_eq!(
+            dates,
+            vec![
+                from,
+                NaiveDate::from_ymd_opt(2026, 1, 31).unwrap(),
+                NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),
+                to,
+            ]
+        );
+    }
+
+    #[test]
+    fn html_keeps_rows_grouped_by_day_and_renders_empty_days() {
+        let first = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap();
+        let second = NaiveDate::from_ymd_opt(2026, 2, 2).unwrap();
+        let empty = NaiveDate::from_ymd_opt(2026, 2, 3).unwrap();
+        let by_day = vec![
+            (first, vec![("alpha.exe".to_string(), 60)], 60),
+            (second, vec![("beta.exe".to_string(), 120)], 120),
+            (empty, Vec::new(), 0),
+        ];
+
+        let html = render_html(&[], 180, &by_day, 3, Path::new("test-data"));
+        let empty_start = html.find("<h2>2026-02-03</h2>").unwrap();
+        let second_start = html.find("<h2>2026-02-02</h2>").unwrap();
+        let first_start = html.find("<h2>2026-02-01</h2>").unwrap();
+
+        assert!(empty_start < second_start);
+        assert!(second_start < first_start);
+
+        let empty_section = &html[empty_start..second_start];
+        assert!(empty_section.contains("<div class=\"day-total\">0s</div>"));
+        assert!(empty_section.contains("<div class=\"empty\">No records.</div>"));
+        assert!(!empty_section.contains("alpha.exe"));
+        assert!(!empty_section.contains("beta.exe"));
+
+        let second_section = &html[second_start..first_start];
+        assert!(second_section.contains("beta.exe"));
+        assert!(!second_section.contains("alpha.exe"));
+        assert!(!second_section.contains("No records."));
+
+        let first_section = &html[first_start..];
+        assert!(first_section.contains("alpha.exe"));
+        assert!(!first_section.contains("beta.exe"));
+        assert!(!first_section.contains("No records."));
+    }
 }

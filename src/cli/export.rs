@@ -7,12 +7,13 @@ use lexopt::prelude::*;
 use serde::Serialize;
 
 use crate::classifier::Classifier;
-use crate::cli::report::{fmt_date, next_day, parse_date};
+use crate::cli::report::{fmt_date, parse_date, validate_range};
+use crate::local_time::{Calendar, SystemCalendar};
 use crate::paths::AppPaths;
 use crate::storage::crypto::{load_or_create_master_key, Cipher};
 use crate::storage::dict::Dict;
-use crate::storage::log::LogReader;
-use crate::storage::writer::{now_unix, unix_to_utc_date, utc_midnight_unix};
+use crate::storage::query::visit_local_date_range;
+use crate::storage::writer::now_unix;
 
 pub struct ExportArgs {
     pub format: Format,
@@ -22,7 +23,10 @@ pub struct ExportArgs {
 }
 
 #[derive(Clone, Copy)]
-pub enum Format { Csv, Json }
+pub enum Format {
+    Csv,
+    Json,
+}
 
 #[derive(Serialize)]
 struct Row<'a> {
@@ -32,7 +36,10 @@ struct Row<'a> {
     app_path: &'a str,
     title: Option<&'a str>,
     category: Option<&'a str>,
+    start_timestamp: String,
 }
+
+const CSV_HEADER: &str = "date,start_time,duration_secs,app_path,title,category,start_timestamp";
 
 const EXPORT_HELP: &str = "\
 tracker export — 导出原始记录
@@ -40,8 +47,8 @@ tracker export — 导出原始记录
 OPTIONS:
     --format csv|json     输出格式（默认 csv）
     --out PATH            输出文件路径（必填）
-    --from YYYY-MM-DD     起始（默认今天）
-    --to   YYYY-MM-DD     截止（默认今天）
+    --from YYYY-MM-DD     起始本地日期（默认今天）
+    --to   YYYY-MM-DD     截止本地日期（默认今天）
     -h, --help            打印帮助
 ";
 
@@ -52,15 +59,20 @@ pub fn parse(p: &mut lexopt::Parser) -> Result<ExportArgs, lexopt::Error> {
     let mut to: Option<String> = None;
     while let Some(arg) = p.next()? {
         match arg {
-            Short('h') | Long("help") => { print!("{EXPORT_HELP}"); std::process::exit(0); }
+            Short('h') | Long("help") => {
+                print!("{EXPORT_HELP}");
+                std::process::exit(0);
+            }
             Long("format") => {
                 format = match p.value()?.string()?.as_str() {
                     "csv" => Format::Csv,
                     "json" => Format::Json,
-                    other => return Err(lexopt::Error::UnexpectedValue {
-                        option: "--format".into(),
-                        value: other.into(),
-                    }),
+                    other => {
+                        return Err(lexopt::Error::UnexpectedValue {
+                            option: "--format".into(),
+                            value: other.into(),
+                        })
+                    }
                 };
             }
             Long("out") => out = Some(p.value()?.into()),
@@ -69,14 +81,33 @@ pub fn parse(p: &mut lexopt::Parser) -> Result<ExportArgs, lexopt::Error> {
             _ => return Err(arg.unexpected()),
         }
     }
-    let out = out.ok_or(lexopt::Error::MissingValue { option: Some("--out".into()) })?;
-    Ok(ExportArgs { format, out, from, to })
+    let out = out.ok_or(lexopt::Error::MissingValue {
+        option: Some("--out".into()),
+    })?;
+    Ok(ExportArgs {
+        format,
+        out,
+        from,
+        to,
+    })
 }
 
 pub fn run(args: ExportArgs, paths: &AppPaths, machine_scope: bool) -> std::io::Result<()> {
-    let today = unix_to_utc_date(now_unix());
-    let from = args.from.as_deref().map(parse_date).transpose()?.unwrap_or(today);
-    let to = args.to.as_deref().map(parse_date).transpose()?.unwrap_or(today);
+    let calendar = SystemCalendar::new();
+    let today = calendar.today_at(now_unix())?;
+    let from = args
+        .from
+        .as_deref()
+        .map(parse_date)
+        .transpose()?
+        .unwrap_or(today);
+    let to = args
+        .to
+        .as_deref()
+        .map(parse_date)
+        .transpose()?
+        .unwrap_or(today);
+    validate_range(from, to)?;
 
     let key = load_or_create_master_key(&paths.key_file, machine_scope)?;
     let cipher = Cipher::new(&key);
@@ -91,56 +122,55 @@ pub fn run(args: ExportArgs, paths: &AppPaths, machine_scope: bool) -> std::io::
     }
     let mut out = std::io::BufWriter::new(std::fs::File::create(&args.out)?);
 
-    let mut date = from;
     let mut json_first = true;
     if matches!(args.format, Format::Csv) {
-        writeln!(out, "date,start_time,duration_secs,app_path,title,category")?;
+        writeln!(out, "{CSV_HEADER}")?;
     } else {
         write!(out, "[")?;
     }
 
-    while date <= to {
-        let path = paths.log_file_for_day(date.year, date.month, date.day);
-        let recs = LogReader::new(cipher.clone(), date).read_all(&path)?;
-        let day_start = utc_midnight_unix(date);
-        for r in recs {
-            let exe = apps.get(r.app_id).unwrap_or("?");
-            let title = if r.title_id == 0 { None } else { titles.get(r.title_id) };
-            let category = classifier.classify(exe, title);
-            let start_time = fmt_time_of_day(r.start_offset_secs);
-            let _start_unix = day_start + r.start_offset_secs as u64;
-            match args.format {
-                Format::Csv => {
-                    writeln!(
-                        out,
-                        "{},{},{},{},{},{}",
-                        fmt_date(date),
-                        start_time,
-                        r.duration_secs,
-                        csv_escape(exe),
-                        csv_escape(title.unwrap_or("")),
-                        csv_escape(category.unwrap_or("")),
-                    )?;
+    visit_local_date_range(paths, &cipher, &calendar, from, to, |r| {
+        let exe = apps.get(r.app_id).unwrap_or("?");
+        let title = if r.title_id == 0 {
+            None
+        } else {
+            titles.get(r.title_id)
+        };
+        let category = classifier.classify(exe, title);
+        let (start_time, start_timestamp) = calendar.format_time_and_rfc3339(r.start_unix)?;
+        match args.format {
+            Format::Csv => {
+                writeln!(
+                    out,
+                    "{},{},{},{},{},{},{}",
+                    fmt_date(r.local_date),
+                    start_time,
+                    r.duration_secs,
+                    csv_escape(exe),
+                    csv_escape(title.unwrap_or("")),
+                    csv_escape(category.unwrap_or("")),
+                    start_timestamp,
+                )?;
+            }
+            Format::Json => {
+                if !json_first {
+                    write!(out, ",")?;
                 }
-                Format::Json => {
-                    if !json_first {
-                        write!(out, ",")?;
-                    }
-                    json_first = false;
-                    let row = Row {
-                        date: fmt_date(date),
-                        start_time,
-                        duration_secs: r.duration_secs,
-                        app_path: exe,
-                        title,
-                        category,
-                    };
-                    serde_json::to_writer(&mut out, &row)?;
-                }
+                json_first = false;
+                let row = Row {
+                    date: fmt_date(r.local_date),
+                    start_time,
+                    duration_secs: r.duration_secs,
+                    app_path: exe,
+                    title,
+                    category,
+                    start_timestamp,
+                };
+                serde_json::to_writer(&mut out, &row)?;
             }
         }
-        date = next_day(date);
-    }
+        Ok(())
+    })?;
 
     if matches!(args.format, Format::Json) {
         write!(out, "]")?;
@@ -150,17 +180,56 @@ pub fn run(args: ExportArgs, paths: &AppPaths, machine_scope: bool) -> std::io::
     Ok(())
 }
 
-fn fmt_time_of_day(secs: u32) -> String {
-    let h = secs / 3600;
-    let m = (secs % 3600) / 60;
-    let s = secs % 60;
-    format!("{h:02}:{m:02}:{s:02}")
-}
-
 fn csv_escape(s: &str) -> String {
     if s.contains(',') || s.contains('"') || s.contains('\n') {
         format!("\"{}\"", s.replace('"', "\"\""))
     } else {
         s.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::local_time::TestCalendar;
+
+    use super::*;
+
+    #[test]
+    fn csv_header_preserves_legacy_columns_and_appends_timestamp() {
+        let columns: Vec<_> = CSV_HEADER.split(',').collect();
+
+        assert_eq!(
+            &columns[..6],
+            [
+                "date",
+                "start_time",
+                "duration_secs",
+                "app_path",
+                "title",
+                "category",
+            ]
+        );
+        assert_eq!(columns.len(), 7);
+        assert_eq!(columns.last(), Some(&"start_timestamp"));
+    }
+
+    #[test]
+    fn json_preserves_field_order_and_numeric_utc_offset() {
+        let calendar = TestCalendar(chrono_tz::Asia::Shanghai);
+        let (start_time, start_timestamp) = calendar.format_time_and_rfc3339(0).unwrap();
+        let row = Row {
+            date: "1970-01-01".to_string(),
+            start_time,
+            duration_secs: 42,
+            app_path: r"C:\Apps\editor.exe",
+            title: Some("notes"),
+            category: Some("work"),
+            start_timestamp,
+        };
+
+        assert_eq!(
+            serde_json::to_string(&row).unwrap(),
+            r#"{"date":"1970-01-01","start_time":"08:00:00","duration_secs":42,"app_path":"C:\\Apps\\editor.exe","title":"notes","category":"work","start_timestamp":"1970-01-01T08:00:00+08:00"}"#
+        );
     }
 }

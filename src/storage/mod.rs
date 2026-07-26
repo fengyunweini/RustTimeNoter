@@ -4,6 +4,7 @@
 //! - `crypto`：AES-256-GCM block 加密 + DPAPI 主密钥包裹（仅 Windows）。
 //! - `log`：每日 `.log` 文件读写。
 //! - `writer`：聚合段 (`Segment`) → 字典 → block buffer → 落盘。
+//! - `query`：按本地日历范围读取 UTC 分片。
 //! - `model`：跨模块共享数据结构。
 
 pub mod model;
@@ -11,5 +12,6 @@ pub mod dict;
 pub mod crypto;
 pub mod log;
 pub mod writer;
+pub mod query;
 
 pub use model::{Segment, Record};
