@@ -151,15 +151,7 @@ fn build_day_boundaries<C: Calendar + ?Sized>(
     from: NaiveDate,
     to: NaiveDate,
 ) -> io::Result<Vec<DayBoundary>> {
-    if from > to {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "`from` must not be after `to`",
-        ));
-    }
-    let inclusive_days = u64::try_from(to.signed_duration_since(from).num_days() + 1)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid local date range"))?;
-    validate_query_day_count(inclusive_days)?;
+    let inclusive_days = validate_local_date_range(from, to)?;
 
     let mut days: Vec<DayBoundary> = Vec::with_capacity(inclusive_days as usize + 1);
     let mut date = from;
@@ -183,6 +175,19 @@ fn build_day_boundaries<C: Calendar + ?Sized>(
         })?;
     }
     Ok(days)
+}
+
+pub(crate) fn validate_local_date_range(from: NaiveDate, to: NaiveDate) -> io::Result<u64> {
+    if from > to {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "`from` must not be after `to`",
+        ));
+    }
+    let inclusive_days = u64::try_from(to.signed_duration_since(from).num_days() + 1)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid local date range"))?;
+    validate_query_day_count(inclusive_days)?;
+    Ok(inclusive_days)
 }
 
 pub(crate) fn validate_query_day_count(days: u64) -> io::Result<()> {

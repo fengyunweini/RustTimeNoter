@@ -26,8 +26,11 @@ config.toml          配置（AFK 阈值、是否记标题等）
 key.bin              主密钥（DPAPI 包裹）
 apps.dict            进程名字典
 titles.dict          窗口标题字典（默认关，隐私优先）
-data\YYYY\MM\YYYY-MM-DD.log   每日加密日志
+data\YYYY\MM\YYYY-MM-DD.log   按 UTC 日分片的加密日志
 ```
+
+存储始终按 UTC 日分片；报表、状态、跟随和导出按当前系统的本地日历时间查询和展示。
+切换系统时区只会重新划分查询结果，不会改写原始日志。
 
 每条记录 17 字节（明文），加密后含 block 头约 21 字节/条均摊。
 正常使用一天通常 < 100 KB。
