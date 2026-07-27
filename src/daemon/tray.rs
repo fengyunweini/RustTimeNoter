@@ -19,32 +19,35 @@
 
 use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicI32, AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::Shell::{
     Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-    DispatchMessageW, GetCursorPos, GetMessageW, LoadIconW, PostQuitMessage, RegisterClassExW,
-    SetForegroundWindow, TrackPopupMenu, TranslateMessage, IDI_APPLICATION, MF_SEPARATOR, MF_STRING,
-    MSG, TPM_BOTTOMALIGN, TPM_LEFTALIGN, TPM_RIGHTBUTTON, WM_APP, WM_COMMAND, WM_DESTROY,
-    WM_RBUTTONUP, WM_USER, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+    DispatchMessageW, GetCursorPos, GetMessageW, LoadIconW, PostMessageW, PostQuitMessage,
+    PostThreadMessageW, RegisterClassExW, SetForegroundWindow, TrackPopupMenu, TranslateMessage,
+    IDI_APPLICATION, MF_SEPARATOR, MF_STRING, MSG, TPM_BOTTOMALIGN, TPM_LEFTALIGN, TPM_RIGHTBUTTON,
+    WM_APP, WM_COMMAND, WM_DESTROY, WM_QUIT, WM_RBUTTONUP, WM_USER, WNDCLASSEXW,
+    WS_OVERLAPPEDWINDOW,
 };
 
 const TRAY_CALLBACK_MSG: u32 = WM_USER + 1;
 const TRAY_ICON_ID: u32 = 1;
 const WM_TRAY_QUIT: u32 = WM_APP + 1;
+const TRAY_READY_TIMEOUT: Duration = Duration::from_secs(2);
 
 const ID_OPEN_REPORT: u16 = 1001;
 const ID_OPEN_DATA: u16 = 1002;
 const ID_STOP: u16 = 1003;
 
-// 主线程发的"快关掉托盘"消息要送到这里
-static TRAY_HWND: AtomicPtr<core::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
 // 托盘菜单要打开 view 时需要知道 tracker.exe 的路径
 static TRACKER_EXE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 // 数据根目录（用于 "Open data folder"）
@@ -53,38 +56,75 @@ static DATA_ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 static MENU_CLICKS: AtomicI32 = AtomicI32::new(0);
 
 pub struct TrayHandle {
+    hwnd: isize,
+    thread_id: u32,
     join: Option<JoinHandle<()>>,
 }
 
 impl TrayHandle {
     /// 通知托盘线程结束。返回后托盘图标已经移除。
     pub fn shutdown(mut self) {
-        let hwnd = TRAY_HWND.swap(std::ptr::null_mut(), Ordering::SeqCst) as HWND;
-        if !hwnd.is_null() {
-            unsafe {
-                windows_sys::Win32::UI::WindowsAndMessaging::PostMessageW(
-                    hwnd, WM_TRAY_QUIT, 0, 0,
-                );
-            }
-        }
+        let hwnd = self.hwnd as HWND;
+        let signaled = unsafe {
+            PostMessageW(hwnd, WM_TRAY_QUIT, 0, 0) != 0
+                || PostThreadMessageW(self.thread_id, WM_QUIT, 0, 0) != 0
+        };
         if let Some(j) = self.join.take() {
-            let _ = j.join();
+            finish_tray_thread(j, signaled);
         }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TrayReady {
+    hwnd: isize,
+    thread_id: u32,
 }
 
 /// 在后台线程启动托盘。失败时记一条 stderr，但不返回 Err（托盘失败不应让 daemon 退出）。
 pub fn spawn(tracker_exe: PathBuf, data_root: PathBuf) -> Option<TrayHandle> {
     let _ = TRACKER_EXE.set(tracker_exe);
     let _ = DATA_ROOT.set(data_root);
+    let (ready_tx, ready_rx) = mpsc::sync_channel(1);
     let join = std::thread::Builder::new()
         .name("rtn-tray".into())
-        .spawn(tray_thread)
+        .spawn(move || tray_thread(ready_tx))
         .ok()?;
-    Some(TrayHandle { join: Some(join) })
+    complete_spawn(join, ready_rx, TRAY_READY_TIMEOUT)
 }
 
-fn tray_thread() {
+fn complete_spawn(
+    join: JoinHandle<()>,
+    ready_rx: mpsc::Receiver<Option<TrayReady>>,
+    timeout: Duration,
+) -> Option<TrayHandle> {
+    match ready_rx.recv_timeout(timeout) {
+        Ok(Some(ready)) => Some(TrayHandle {
+            hwnd: ready.hwnd,
+            thread_id: ready.thread_id,
+            join: Some(join),
+        }),
+        Ok(None) | Err(RecvTimeoutError::Disconnected) => {
+            let _ = join.join();
+            None
+        }
+        Err(RecvTimeoutError::Timeout) => {
+            finish_tray_thread(join, false);
+            None
+        }
+    }
+}
+
+fn finish_tray_thread(join: JoinHandle<()>, signal_delivered: bool) {
+    // If both queueing APIs fail while the thread is still alive, joining can
+    // block the daemon forever. Detaching is safe here: returning from main
+    // terminates the process and Windows removes the tray icon.
+    if signal_delivered || join.is_finished() {
+        let _ = join.join();
+    }
+}
+
+fn tray_thread(ready: mpsc::SyncSender<Option<TrayReady>>) {
     unsafe {
         let class_name: Vec<u16> = "RustTimeNoterTray\0".encode_utf16().collect();
         let hinst = GetModuleHandleW(std::ptr::null());
@@ -110,18 +150,23 @@ fn tray_thread() {
             class_name.as_ptr(),
             class_name.as_ptr(),
             WS_OVERLAPPEDWINDOW,
-            0, 0, 0, 0,
+            0,
+            0,
+            0,
+            0,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             hinst,
             std::ptr::null(),
         );
         if hwnd.is_null() {
-            eprintln!("[rtn-tray] CreateWindowExW failed: {}",
-                std::io::Error::last_os_error());
+            eprintln!(
+                "[rtn-tray] CreateWindowExW failed: {}",
+                std::io::Error::last_os_error()
+            );
+            let _ = ready.send(None);
             return;
         }
-        TRAY_HWND.store(hwnd as *mut _, Ordering::SeqCst);
 
         // 注册托盘图标
         let mut nid: NOTIFYICONDATAW = std::mem::zeroed();
@@ -137,10 +182,24 @@ fn tray_thread() {
         nid.szTip[..copy_len].copy_from_slice(&tip[..copy_len]);
 
         if Shell_NotifyIconW(NIM_ADD, &nid) == 0 {
-            eprintln!("[rtn-tray] Shell_NotifyIconW(NIM_ADD) failed: {}",
-                std::io::Error::last_os_error());
+            eprintln!(
+                "[rtn-tray] Shell_NotifyIconW(NIM_ADD) failed: {}",
+                std::io::Error::last_os_error()
+            );
             DestroyWindow(hwnd);
-            TRAY_HWND.store(std::ptr::null_mut(), Ordering::SeqCst);
+            let _ = ready.send(None);
+            return;
+        }
+
+        if ready
+            .send(Some(TrayReady {
+                hwnd: hwnd as isize,
+                thread_id: GetCurrentThreadId(),
+            }))
+            .is_err()
+        {
+            Shell_NotifyIconW(NIM_DELETE, &nid);
+            DestroyWindow(hwnd);
             return;
         }
 
@@ -158,12 +217,14 @@ fn tray_thread() {
         // 收尾
         Shell_NotifyIconW(NIM_DELETE, &nid);
         DestroyWindow(hwnd);
-        TRAY_HWND.store(std::ptr::null_mut(), Ordering::SeqCst);
     }
 }
 
 unsafe extern "system" fn tray_wnd_proc(
-    hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM,
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
 ) -> LRESULT {
     match msg {
         WM_TRAY_QUIT => {
@@ -172,9 +233,13 @@ unsafe extern "system" fn tray_wnd_proc(
         }
         TRAY_CALLBACK_MSG => {
             let event = (lparam as u32) & 0xFFFF;
-            if event == WM_RBUTTONUP || event == 0x0205 /* WM_RBUTTONUP fallback */ {
+            if event == WM_RBUTTONUP || event == 0x0205
+            /* WM_RBUTTONUP fallback */
+            {
                 show_menu(hwnd);
-            } else if event == 0x0203 /* WM_LBUTTONDBLCLK */ {
+            } else if event == 0x0203
+            /* WM_LBUTTONDBLCLK */
+            {
                 open_report();
             }
             0
@@ -204,7 +269,9 @@ unsafe extern "system" fn tray_wnd_proc(
 
 unsafe fn show_menu(hwnd: HWND) {
     let menu = CreatePopupMenu();
-    if menu.is_null() { return; }
+    if menu.is_null() {
+        return;
+    }
 
     let item_open: Vec<u16> = "Open report\0".encode_utf16().collect();
     let item_data: Vec<u16> = "Open data folder\0".encode_utf16().collect();
@@ -222,7 +289,11 @@ unsafe fn show_menu(hwnd: HWND) {
     TrackPopupMenu(
         menu,
         TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_BOTTOMALIGN,
-        pt.x, pt.y, 0, hwnd, std::ptr::null(),
+        pt.x,
+        pt.y,
+        0,
+        hwnd,
+        std::ptr::null(),
     );
     DestroyMenu(menu);
 }
@@ -244,7 +315,11 @@ fn open_data_folder() {
     let Some(root) = DATA_ROOT.get() else { return };
     unsafe {
         let verb: Vec<u16> = "open\0".encode_utf16().collect();
-        let path: Vec<u16> = root.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+        let path: Vec<u16> = root
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
         windows_sys::Win32::UI::Shell::ShellExecuteW(
             std::ptr::null_mut(),
             verb.as_ptr(),
@@ -253,5 +328,71 @@ fn open_data_folder() {
             std::ptr::null(),
             windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL as i32,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spawn_completion_waits_for_the_tray_ready_handshake() {
+        let (ready_tx, ready_rx) = mpsc::sync_channel(1);
+        let (allow_ready_tx, allow_ready_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let tray_thread = std::thread::spawn(move || {
+            allow_ready_rx.recv().unwrap();
+            ready_tx
+                .send(Some(TrayReady {
+                    hwnd: 123,
+                    thread_id: 456,
+                }))
+                .unwrap();
+            release_rx.recv().unwrap();
+        });
+
+        let (completed_tx, completed_rx) = mpsc::channel();
+        let waiter = std::thread::spawn(move || {
+            completed_tx
+                .send(complete_spawn(
+                    tray_thread,
+                    ready_rx,
+                    Duration::from_secs(1),
+                ))
+                .unwrap();
+        });
+        assert!(completed_rx
+            .recv_timeout(Duration::from_millis(50))
+            .is_err());
+
+        allow_ready_tx.send(()).unwrap();
+        let mut handle = completed_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
+        assert_eq!(handle.hwnd, 123);
+        assert_eq!(handle.thread_id, 456);
+
+        release_tx.send(()).unwrap();
+        handle.join.take().unwrap().join().unwrap();
+        waiter.join().unwrap();
+    }
+
+    #[test]
+    fn failed_shutdown_signal_never_joins_a_live_tray_thread() {
+        let (release_tx, release_rx) = mpsc::channel();
+        let tray_thread = std::thread::spawn(move || {
+            release_rx.recv().unwrap();
+        });
+        let (returned_tx, returned_rx) = mpsc::channel();
+        let shutdown = std::thread::spawn(move || {
+            finish_tray_thread(tray_thread, false);
+            returned_tx.send(()).unwrap();
+        });
+
+        let returned_without_joining = returned_rx.recv_timeout(Duration::from_secs(1)).is_ok();
+        release_tx.send(()).unwrap();
+        shutdown.join().unwrap();
+        assert!(returned_without_joining);
     }
 }

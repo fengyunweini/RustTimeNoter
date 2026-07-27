@@ -6,6 +6,7 @@
 
 pub mod aggregator;
 pub mod resolver;
+pub mod event_queue;
 pub mod hook;
 pub mod runtime;
 pub mod tray;
