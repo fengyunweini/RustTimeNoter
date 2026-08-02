@@ -388,10 +388,10 @@ struct RuntimeState {
     /// with a later `resolve_current` recovery for the same HWND.
     latest_foreground: Option<ForegroundObservation>,
     global_last_input: Option<MonoTime>,
-    /// An inactive recovery must not backdate a segment into a period that was
-    /// suppressed by a session lock or system suspend. Keep the later boundary
-    /// when those suppression reasons are released independently.
-    resume_not_before: Option<MonoTime>,
+    /// Idle recovery and delayed WinEvent callbacks must not backdate a segment
+    /// into a period suppressed by a session lock or system suspend. Keep the
+    /// later boundary when those suppression reasons are released independently.
+    resume_not_before: Option<TimePoint>,
 }
 
 impl RuntimeState {
@@ -417,11 +417,16 @@ impl RuntimeState {
     }
 
     fn observe_resume_boundary(&mut self, at: TimePoint) {
-        self.resume_not_before = Some(
-            self.resume_not_before
-                .map(|known| known.max(at.monotonic))
-                .unwrap_or(at.monotonic),
-        );
+        self.resume_not_before = Some(match self.resume_not_before {
+            Some(known) if known.monotonic > at.monotonic => known,
+            _ => at,
+        });
+    }
+
+    fn clamp_to_resume_boundary(&self, at: TimePoint) -> TimePoint {
+        self.resume_not_before
+            .filter(|boundary| at.monotonic <= boundary.monotonic)
+            .unwrap_or(at)
     }
 }
 
@@ -493,6 +498,7 @@ fn handle_foreground<R: WindowResolver>(
     event: ForegroundEvent,
 ) -> Vec<crate::storage::Segment> {
     state.observe_foreground(&event);
+    let clamped_at = state.clamp_to_resume_boundary(event.at);
     let resolved = resolver
         .resolve_event(&event, cfg.capture_titles, cfg.effective_title_max_chars())
         .map(|app| strip_blacklisted_title(cfg, app));
@@ -502,8 +508,8 @@ fn handle_foreground<R: WindowResolver>(
             state.observe_global_input(last_input);
         }
         state.current = None;
-        let mut output = aggregator.handle_observed_idle(event.at, event.last_input);
-        output.extend(aggregator.close_for_gap(event.at));
+        let mut output = aggregator.handle_observed_idle(clamped_at, event.last_input);
+        output.extend(aggregator.close_for_gap(clamped_at));
         return output;
     };
 
@@ -525,7 +531,7 @@ fn handle_foreground<R: WindowResolver>(
             generation: event.generation,
             app,
         });
-        return aggregator.handle_observed_idle(event.at, event.last_input);
+        return aggregator.handle_observed_idle(clamped_at, event.last_input);
     }
 
     let effective_last_input = event
@@ -540,7 +546,7 @@ fn handle_foreground<R: WindowResolver>(
         generation: event.generation,
         app: app.clone(),
     });
-    aggregator.handle_observed_foreground(app, event.at, effective_last_input)
+    aggregator.handle_observed_foreground(app, clamped_at, effective_last_input)
 }
 
 fn handle_title<R: WindowResolver>(
@@ -559,6 +565,7 @@ fn handle_title<R: WindowResolver>(
     if current.window != event.window || current.generation != event.generation {
         return Vec::new();
     }
+    let clamped_at = state.clamp_to_resume_boundary(event.at);
 
     // This is the title-only resolver path: it never opens a process.
     let title = if cfg.title_blacklisted(&current.app.basename) {
@@ -583,7 +590,7 @@ fn handle_title<R: WindowResolver>(
     });
     // No LASTINPUTINFO sample is attached to a title event. The aggregator
     // preserves the previous real input timestamp.
-    aggregator.handle_observed_foreground(app, event.at, None)
+    aggregator.handle_observed_foreground(app, clamped_at, None)
 }
 
 fn handle_idle_tick<R: WindowResolver>(
@@ -608,11 +615,11 @@ fn handle_idle_tick<R: WindowResolver>(
             resolver.resolve_current(cfg.capture_titles, cfg.effective_title_max_chars())
         {
             let last_input = last_input.expect("checked above");
-            let recovery_start = state
-                .resume_not_before
-                .map(|not_before| last_input.max(not_before))
-                .unwrap_or(last_input);
-            if recovery_start > at.monotonic {
+            let recovery_at = match state.resume_not_before {
+                Some(boundary) if last_input <= boundary.monotonic => boundary,
+                _ => project_time_point(at, last_input),
+            };
+            if recovery_at.monotonic > at.monotonic {
                 return output;
             }
             let app = strip_blacklisted_title(cfg, app);
@@ -630,7 +637,7 @@ fn handle_idle_tick<R: WindowResolver>(
             });
             output.extend(aggregator.handle_observed_foreground(
                 app,
-                project_time_point(at, recovery_start),
+                recovery_at,
                 Some(last_input),
             ));
         }
@@ -1242,6 +1249,100 @@ mod tests {
     }
 
     #[test]
+    fn delayed_foreground_and_title_are_clamped_to_resume_boundary() {
+        let cfg = config(true);
+        let resolver = FakeResolver::new(&[(1, "before"), (2, "editor")]);
+        *resolver.title.borrow_mut() = Some("post-resume title".to_string());
+        let (writer, written) = mpsc::sync_channel(64);
+        let mut state = RuntimeState::default();
+        let mut aggregator = Aggregator::new(cfg.afk_threshold_secs());
+        let resume_wall = WALL + 1_000_000;
+
+        process(
+            &cfg,
+            &mut state,
+            &mut aggregator,
+            &writer,
+            &resolver,
+            HookEvent::Foreground(foreground(1, 0, Some(0), 1)),
+        );
+        process(
+            &cfg,
+            &mut state,
+            &mut aggregator,
+            &writer,
+            &resolver,
+            HookEvent::Suspend {
+                at: TimePoint::new(10_000, WALL + 10_000),
+                last_input: Some(MonoTime::from_millis(10_000)),
+            },
+        );
+        process(
+            &cfg,
+            &mut state,
+            &mut aggregator,
+            &writer,
+            &resolver,
+            HookEvent::Resume {
+                at: TimePoint::new(100_000, resume_wall),
+            },
+        );
+
+        // Both callbacks happened before resume but reached the runtime after
+        // it. They still carry useful identity/title state, while their segment
+        // boundaries must not refill the suspended interval.
+        process(
+            &cfg,
+            &mut state,
+            &mut aggregator,
+            &writer,
+            &resolver,
+            HookEvent::Foreground(foreground(2, 20_000, Some(20_000), 2)),
+        );
+        process(
+            &cfg,
+            &mut state,
+            &mut aggregator,
+            &writer,
+            &resolver,
+            HookEvent::Title(TitleEvent {
+                window: WindowId(2),
+                raw_event_millis: 30_000,
+                at: TimePoint::new(30_000, WALL + 30_000),
+                generation: 2,
+            }),
+        );
+        assert!(handle_hook_event(
+            &cfg,
+            &RuntimeClock,
+            &mut state,
+            &mut aggregator,
+            &writer,
+            &resolver,
+            HookEvent::Shutdown {
+                at: TimePoint::new(120_000, resume_wall + 20_000),
+                last_input: Some(MonoTime::from_millis(20_000)),
+            },
+        )
+        .unwrap());
+
+        let segments: Vec<_> = written
+            .try_iter()
+            .filter_map(|message| match message {
+                WriterMsg::Segment(segment) => Some(segment),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].app_basename, "before.exe");
+        assert_eq!(segments[0].end_unix, (WALL + 10_000) / 1_000);
+        assert_eq!(segments[1].app_basename, "editor.exe");
+        assert_eq!(segments[1].title.as_deref(), Some("post-resume title"));
+        assert_eq!(segments[1].start_unix, resume_wall / 1_000);
+        assert_eq!(segments[1].end_unix, (resume_wall + 20_000) / 1_000);
+    }
+
+    #[test]
     fn idle_recovery_reuses_generation_after_foreground_resolution_failure() {
         let cfg = config(true);
         let resolver = FakeResolver::new(&[]);
@@ -1315,6 +1416,9 @@ mod tests {
         let (writer, written) = mpsc::sync_channel(64);
         let mut state = RuntimeState::default();
         let mut aggregator = Aggregator::new(cfg.afk_threshold_secs());
+        let resume_wall = WALL + 1_000_000;
+        let unlock_wall = WALL + 2_000_000;
+        let idle_wall = WALL + 3_000_000;
 
         process(
             &cfg,
@@ -1356,7 +1460,7 @@ mod tests {
             &writer,
             &resolver,
             HookEvent::Resume {
-                at: TimePoint::new(200_000, WALL + 200_000),
+                at: TimePoint::new(200_000, resume_wall),
             },
         );
         process(
@@ -1366,12 +1470,12 @@ mod tests {
             &writer,
             &resolver,
             HookEvent::SessionUnlock {
-                at: TimePoint::new(250_000, WALL + 250_000),
+                at: TimePoint::new(250_000, unlock_wall),
             },
         );
         assert_eq!(
             state.resume_not_before,
-            Some(MonoTime::from_millis(250_000))
+            Some(TimePoint::new(250_000, unlock_wall))
         );
 
         process(
@@ -1381,7 +1485,7 @@ mod tests {
             &writer,
             &resolver,
             HookEvent::IdleTick {
-                at: TimePoint::new(260_000, WALL + 260_000),
+                at: TimePoint::new(260_000, idle_wall),
                 last_input: Some(MonoTime::from_millis(40_000)),
             },
         );
@@ -1393,7 +1497,7 @@ mod tests {
             &writer,
             &resolver,
             HookEvent::Shutdown {
-                at: TimePoint::new(270_000, WALL + 270_000),
+                at: TimePoint::new(270_000, idle_wall + 10_000),
                 last_input: Some(MonoTime::from_millis(40_000)),
             },
         )
@@ -1408,8 +1512,8 @@ mod tests {
             .collect();
         assert_eq!(segments.len(), 2);
         assert_eq!(segments[1].app_basename, "editor.exe");
-        assert_eq!(segments[1].start_unix, (WALL + 250_000) / 1_000);
-        assert_eq!(segments[1].end_unix, (WALL + 270_000) / 1_000);
+        assert_eq!(segments[1].start_unix, unlock_wall / 1_000);
+        assert_eq!(segments[1].end_unix, (unlock_wall + 20_000) / 1_000);
     }
 
     #[test]

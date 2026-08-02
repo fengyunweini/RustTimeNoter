@@ -27,7 +27,6 @@ const MAGIC: &[u8; 4] = b"RTNL";
 const VERSION: u32 = 1;
 const HEADER_LEN: usize = 4 + 4 + 4 + 4;
 const BLOCK_OVERHEAD: usize = 4 + NONCE_LEN + TAG_LEN;
-const MIN_BLOCK_WIRE_LEN: usize = BLOCK_OVERHEAD + RECORD_SIZE;
 pub(crate) const MAX_WRITE_BLOCK_RECORDS: usize = 4_096;
 // Keep bounded compatibility for files produced by historical custom configs,
 // while all new writes stay around 60 KiB of plaintext per block.
@@ -327,13 +326,13 @@ fn scan_blocks(
 ///
 /// A corrupted length field in a middle block can otherwise make all following
 /// blocks look like one truncated tail.  We linearly inspect possible frame
-/// starts and only invoke AEAD for bounded, record-aligned candidates.  A
-/// candidate at byte distance `d` can have any AAD index from the damaged
-/// block through `block_index + d / MIN_BLOCK_WIRE_LEN`: every intervening
-/// valid block occupies at least that many bytes.  All of those still-possible
-/// indices must be rejected before truncation is safe.  If the proof cannot be
-/// completed within budget, recovery is refused and the file remains
-/// byte-for-byte untouched.
+/// starts and only invoke AEAD for bounded, record-aligned candidates. A
+/// candidate at byte distance `d` can have any AAD index from the damaged block
+/// through `block_index + d + 1`: the current damaged block may be wholly
+/// absent, and every additional damaged index may retain as little as one byte.
+/// All of those still-possible indices must be rejected before truncation is
+/// safe. If the proof cannot be completed within budget, recovery is refused
+/// and the file remains byte-for-byte untouched.
 fn ensure_no_authenticated_successor(
     buf: &[u8],
     damaged_start: usize,
@@ -341,7 +340,7 @@ fn ensure_no_authenticated_successor(
     cipher: &Cipher,
     date: LogDate,
 ) -> std::io::Result<()> {
-    let search_start = damaged_start.saturating_add(1);
+    let search_start = damaged_start;
     let search_len = buf.len().saturating_sub(search_start);
     if search_len > MAX_RECOVERY_SCAN_BYTES {
         return Err(invalid_data(format!(
@@ -378,8 +377,10 @@ fn ensure_no_authenticated_successor(
         })?;
         let max_index_offset = candidate_start
             .saturating_sub(damaged_start)
-            .checked_div(MIN_BLOCK_WIRE_LEN)
-            .expect("minimum block wire length is non-zero");
+            .checked_add(1)
+            .ok_or_else(|| {
+                invalid_data("log: recovery index span overflow; refusing to truncate")
+            })?;
         let authentication_attempts = max_index_offset.checked_add(1).ok_or_else(|| {
             invalid_data("log: recovery index span overflow; refusing to truncate")
         })?;
@@ -973,6 +974,78 @@ mod tests {
         damaged.extend_from_slice(&successor);
 
         assert_rejected_and_preserved(&path, &key, &damaged, "legacy-garbage-append");
+    }
+
+    #[test]
+    fn short_damaged_frame_cannot_hide_the_next_authenticated_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("short-damaged-frame.log");
+        let key = MasterKey::new_random();
+        write_blocks(&path, &key, &[record(1)]);
+
+        let cipher = Cipher::new(&key);
+        let mut plaintext = Vec::new();
+        record(3).write_to(&mut plaintext);
+        let successor = cipher.seal_block(&plaintext, &make_aad(d(), 2));
+        let mut damaged = std::fs::read(&path).unwrap();
+        // Block 1 retains only a plausible length prefix. Its successor starts
+        // before one minimum wire length has elapsed, but already uses index 2.
+        damaged.extend_from_slice(&((10 * RECORD_SIZE) as u32).to_le_bytes());
+        damaged.extend_from_slice(&successor);
+
+        assert_rejected_and_preserved(&path, &key, &damaged, "short damaged frame");
+    }
+
+    #[test]
+    fn writer_preserves_file_when_an_entire_block_is_missing_before_its_successor() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing-entire-block.log");
+        let key = MasterKey::new_random();
+        write_blocks(&path, &key, &[record(1), record(2), record(3)]);
+
+        let pristine = std::fs::read(&path).unwrap();
+        let ranges = block_ranges(&pristine);
+        let mut damaged = pristine[..ranges[1].0].to_vec();
+        // Delete block 1 completely. Block 2 now begins exactly where the
+        // scanner expects index 1, but authenticates only with AAD index 2.
+        damaged.extend_from_slice(&pristine[ranges[2].0..]);
+        std::fs::write(&path, &damaged).unwrap();
+
+        let error = LogWriter::open(&path, Cipher::new(&key), d()).err();
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            damaged,
+            "writer must not truncate an authenticated successor at the damaged start"
+        );
+        let error = error.expect("missing middle block must reject writer recovery");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn writer_preserves_file_after_two_short_damaged_fragments() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("two-short-damaged-fragments.log");
+        let key = MasterKey::new_random();
+        write_blocks(&path, &key, &[record(1), record(2), record(3), record(4)]);
+
+        let pristine = std::fs::read(&path).unwrap();
+        let ranges = block_ranges(&pristine);
+        let mut damaged = pristine[..ranges[1].0].to_vec();
+        // Retain one zero byte from each of blocks 1 and 2. Together with the
+        // first two length bytes of block 3, the scanner sees 0x00110000: a
+        // valid record-aligned length that is larger than the remaining file.
+        damaged.extend_from_slice(&[0, 0]);
+        damaged.extend_from_slice(&pristine[ranges[3].0..]);
+        std::fs::write(&path, &damaged).unwrap();
+
+        let error = LogWriter::open(&path, Cipher::new(&key), d()).err();
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            damaged,
+            "writer must not truncate an N+2 successor after two short fragments"
+        );
+        let error = error.expect("multiple damaged middle blocks must reject writer recovery");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
     }
 
     #[test]
