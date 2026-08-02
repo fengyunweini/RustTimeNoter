@@ -3,10 +3,10 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-pub mod paths;
-pub mod config;
 pub mod classifier;
+pub mod config;
 pub mod local_time;
+pub mod paths;
 pub mod storage;
 
 #[cfg(windows)]

@@ -43,9 +43,8 @@ impl Default for Config {
 impl Config {
     pub fn load(path: &Path) -> std::io::Result<Self> {
         match std::fs::read_to_string(path) {
-            Ok(s) => toml::from_str(&s).map_err(|e| {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
-            }),
+            Ok(s) => toml::from_str(&s)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(e) => Err(e),
         }

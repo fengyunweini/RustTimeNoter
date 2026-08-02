@@ -195,7 +195,13 @@ pub fn run(scope: InstallScope) -> std::io::Result<()> {
     aggregator_result?;
     hook_result?;
     message_loop_result?;
-    waiter_result
+    waiter_result?;
+    if hook::control_queue_overflowed() {
+        return Err(std::io::Error::other(
+            "control event reserve exhausted; daemon stopped to avoid blocking the message pump",
+        ));
+    }
+    Ok(())
 }
 
 fn initialize_thread_message_queue() {
@@ -382,6 +388,10 @@ struct RuntimeState {
     /// with a later `resolve_current` recovery for the same HWND.
     latest_foreground: Option<ForegroundObservation>,
     global_last_input: Option<MonoTime>,
+    /// An inactive recovery must not backdate a segment into a period that was
+    /// suppressed by a session lock or system suspend. Keep the later boundary
+    /// when those suppression reasons are released independently.
+    resume_not_before: Option<MonoTime>,
 }
 
 impl RuntimeState {
@@ -404,6 +414,14 @@ impl RuntimeState {
     fn causal_global_input(&self, at: TimePoint) -> Option<MonoTime> {
         self.global_last_input
             .filter(|last_input| *last_input <= at.monotonic)
+    }
+
+    fn observe_resume_boundary(&mut self, at: TimePoint) {
+        self.resume_not_before = Some(
+            self.resume_not_before
+                .map(|known| known.max(at.monotonic))
+                .unwrap_or(at.monotonic),
+        );
     }
 }
 
@@ -431,7 +449,10 @@ fn handle_hook_event<R: WindowResolver>(
             output.extend(aggregator.handle(Event::SessionLock { at }));
             output
         }
-        HookEvent::SessionUnlock { at } => aggregator.handle(Event::SessionUnlock { at }),
+        HookEvent::SessionUnlock { at } => {
+            state.observe_resume_boundary(at);
+            aggregator.handle(Event::SessionUnlock { at })
+        }
         HookEvent::Suspend { at, last_input } => {
             if let Some(last_input) = last_input {
                 state.observe_global_input(last_input);
@@ -440,7 +461,10 @@ fn handle_hook_event<R: WindowResolver>(
             output.extend(aggregator.handle(Event::Suspend { at }));
             output
         }
-        HookEvent::Resume { at } => aggregator.handle(Event::Resume { at }),
+        HookEvent::Resume { at } => {
+            state.observe_resume_boundary(at);
+            aggregator.handle(Event::Resume { at })
+        }
         HookEvent::Shutdown { at, last_input } => {
             if let Some(last_input) = last_input {
                 state.observe_global_input(last_input);
@@ -584,6 +608,13 @@ fn handle_idle_tick<R: WindowResolver>(
             resolver.resolve_current(cfg.capture_titles, cfg.effective_title_max_chars())
         {
             let last_input = last_input.expect("checked above");
+            let recovery_start = state
+                .resume_not_before
+                .map(|not_before| last_input.max(not_before))
+                .unwrap_or(last_input);
+            if recovery_start > at.monotonic {
+                return output;
+            }
             let app = strip_blacklisted_title(cfg, app);
             let generation = state
                 .latest_foreground
@@ -599,7 +630,7 @@ fn handle_idle_tick<R: WindowResolver>(
             });
             output.extend(aggregator.handle_observed_foreground(
                 app,
-                project_time_point(at, last_input),
+                project_time_point(at, recovery_start),
                 Some(last_input),
             ));
         }
@@ -1274,6 +1305,111 @@ mod tests {
                 .and_then(|current| current.app.title.as_deref()),
             Some("recovered title")
         );
+    }
+
+    #[test]
+    fn idle_recovery_starts_after_latest_unlock_or_resume_boundary() {
+        let cfg = config(false);
+        let resolver = FakeResolver::new(&[(1, "editor")]);
+        *resolver.current.borrow_mut() = Some((WindowId(1), 101, app("editor")));
+        let (writer, written) = mpsc::sync_channel(64);
+        let mut state = RuntimeState::default();
+        let mut aggregator = Aggregator::new(cfg.afk_threshold_secs());
+
+        process(
+            &cfg,
+            &mut state,
+            &mut aggregator,
+            &writer,
+            &resolver,
+            HookEvent::Foreground(foreground(1, 0, Some(0), 1)),
+        );
+        process(
+            &cfg,
+            &mut state,
+            &mut aggregator,
+            &writer,
+            &resolver,
+            HookEvent::SessionLock {
+                at: TimePoint::new(50_000, WALL + 50_000),
+                last_input: Some(MonoTime::from_millis(40_000)),
+            },
+        );
+        process(
+            &cfg,
+            &mut state,
+            &mut aggregator,
+            &writer,
+            &resolver,
+            HookEvent::Suspend {
+                at: TimePoint::new(60_000, WALL + 60_000),
+                last_input: Some(MonoTime::from_millis(40_000)),
+            },
+        );
+
+        // Resume releases only the suspend reason; unlock releases the later
+        // lock reason. Recovery must honor the maximum of both boundaries.
+        process(
+            &cfg,
+            &mut state,
+            &mut aggregator,
+            &writer,
+            &resolver,
+            HookEvent::Resume {
+                at: TimePoint::new(200_000, WALL + 200_000),
+            },
+        );
+        process(
+            &cfg,
+            &mut state,
+            &mut aggregator,
+            &writer,
+            &resolver,
+            HookEvent::SessionUnlock {
+                at: TimePoint::new(250_000, WALL + 250_000),
+            },
+        );
+        assert_eq!(
+            state.resume_not_before,
+            Some(MonoTime::from_millis(250_000))
+        );
+
+        process(
+            &cfg,
+            &mut state,
+            &mut aggregator,
+            &writer,
+            &resolver,
+            HookEvent::IdleTick {
+                at: TimePoint::new(260_000, WALL + 260_000),
+                last_input: Some(MonoTime::from_millis(40_000)),
+            },
+        );
+        assert!(handle_hook_event(
+            &cfg,
+            &RuntimeClock,
+            &mut state,
+            &mut aggregator,
+            &writer,
+            &resolver,
+            HookEvent::Shutdown {
+                at: TimePoint::new(270_000, WALL + 270_000),
+                last_input: Some(MonoTime::from_millis(40_000)),
+            },
+        )
+        .unwrap());
+
+        let segments: Vec<_> = written
+            .try_iter()
+            .filter_map(|message| match message {
+                WriterMsg::Segment(segment) => Some(segment),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[1].app_basename, "editor.exe");
+        assert_eq!(segments[1].start_unix, (WALL + 250_000) / 1_000);
+        assert_eq!(segments[1].end_unix, (WALL + 270_000) / 1_000);
     }
 
     #[test]

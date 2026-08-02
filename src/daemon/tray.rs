@@ -326,7 +326,7 @@ fn open_data_folder() {
             path.as_ptr(),
             std::ptr::null(),
             std::ptr::null(),
-            windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL as i32,
+            windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
         );
     }
 }

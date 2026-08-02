@@ -27,6 +27,7 @@ const MAGIC: &[u8; 4] = b"RTNL";
 const VERSION: u32 = 1;
 const HEADER_LEN: usize = 4 + 4 + 4 + 4;
 const BLOCK_OVERHEAD: usize = 4 + NONCE_LEN + TAG_LEN;
+const MIN_BLOCK_WIRE_LEN: usize = BLOCK_OVERHEAD + RECORD_SIZE;
 pub(crate) const MAX_WRITE_BLOCK_RECORDS: usize = 4_096;
 // Keep bounded compatibility for files produced by historical custom configs,
 // while all new writes stay around 60 KiB of plaintext per block.
@@ -326,10 +327,12 @@ fn scan_blocks(
 ///
 /// A corrupted length field in a middle block can otherwise make all following
 /// blocks look like one truncated tail.  We linearly inspect possible frame
-/// starts and only invoke AEAD for bounded, record-aligned candidates.  The
-/// current index catches files produced by the historical "append after torn
-/// bytes" bug; the next index catches a corrupted middle block.  If the proof
-/// cannot be completed within budget, recovery is refused and the file remains
+/// starts and only invoke AEAD for bounded, record-aligned candidates.  A
+/// candidate at byte distance `d` can have any AAD index from the damaged
+/// block through `block_index + d / MIN_BLOCK_WIRE_LEN`: every intervening
+/// valid block occupies at least that many bytes.  All of those still-possible
+/// indices must be rejected before truncation is safe.  If the proof cannot be
+/// completed within budget, recovery is refused and the file remains
 /// byte-for-byte untouched.
 fn ensure_no_authenticated_successor(
     buf: &[u8],
@@ -373,7 +376,19 @@ fn ensure_no_authenticated_successor(
         candidates = candidates.checked_add(1).ok_or_else(|| {
             invalid_data("log: recovery candidate counter overflow; refusing to truncate")
         })?;
-        let authentication_attempts = 1 + usize::from(block_index.checked_add(1).is_some());
+        let max_index_offset = candidate_start
+            .saturating_sub(damaged_start)
+            .checked_div(MIN_BLOCK_WIRE_LEN)
+            .expect("minimum block wire length is non-zero");
+        let authentication_attempts = max_index_offset.checked_add(1).ok_or_else(|| {
+            invalid_data("log: recovery index span overflow; refusing to truncate")
+        })?;
+        let max_index_offset = u32::try_from(max_index_offset).map_err(|_| {
+            invalid_data("log: recovery index span exceeds u32; refusing to truncate")
+        })?;
+        let last_candidate_index = block_index.checked_add(max_index_offset).ok_or_else(|| {
+            invalid_data("log: recovery block index exhausted; refusing to truncate")
+        })?;
         let candidate_authentication_bytes =
             total.checked_mul(authentication_attempts).ok_or_else(|| {
                 invalid_data("log: recovery authentication budget overflow; refusing to truncate")
@@ -392,10 +407,7 @@ fn ensure_no_authenticated_successor(
         }
 
         let frame = &remaining[..total];
-        let mut candidate_indices = [None, None];
-        candidate_indices[0] = Some(block_index);
-        candidate_indices[1] = block_index.checked_add(1);
-        for candidate_index in candidate_indices.into_iter().flatten() {
+        for candidate_index in block_index..=last_candidate_index {
             let aad = make_aad(date, candidate_index);
             if matches!(
                 cipher.open_block(frame, &aad),
@@ -920,6 +932,25 @@ mod tests {
                 .copy_from_slice(&(forged_plaintext_len as u32).to_le_bytes());
             assert_rejected_and_preserved(&path, &key, &damaged, "swallow-exactly");
         }
+    }
+
+    #[test]
+    fn two_consecutive_damaged_frames_cannot_hide_a_later_authenticated_block() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("two-damaged-frames.log");
+        let key = MasterKey::new_random();
+        write_blocks(&path, &key, &[record(1), record(2), record(3), record(4)]);
+
+        let mut damaged = std::fs::read(&path).unwrap();
+        let ranges = block_ranges(&damaged);
+        // Block 1 claims a frame larger than the remaining suffix, forcing
+        // recovery proof from index 1. Block 2 is also unauthentic, while the
+        // untouched block 3 must still be found with AAD index 3.
+        damaged[ranges[1].0..ranges[1].0 + 4]
+            .copy_from_slice(&((10 * RECORD_SIZE) as u32).to_le_bytes());
+        damaged[ranges[2].1 - 1] ^= 0x40;
+
+        assert_rejected_and_preserved(&path, &key, &damaged, "two damaged frames");
     }
 
     #[test]

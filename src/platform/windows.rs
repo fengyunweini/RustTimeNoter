@@ -1,7 +1,5 @@
 //! windows-sys 薄封装：UTF-16 转换、HWND→进程信息、AttachConsole 等。
 
-#![cfg(windows)]
-
 use std::ffi::OsString;
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::PathBuf;
@@ -44,7 +42,7 @@ pub fn foreground_window() -> Option<HWND> {
     }
 }
 
-pub fn window_pid(hwnd: HWND) -> Option<u32> {
+pub(crate) fn window_pid(hwnd: HWND) -> Option<u32> {
     let mut pid: u32 = 0;
     let tid = unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
     if tid == 0 || pid == 0 {
@@ -54,7 +52,7 @@ pub fn window_pid(hwnd: HWND) -> Option<u32> {
     }
 }
 
-pub fn window_title(hwnd: HWND, max_chars: usize) -> String {
+pub(crate) fn window_title(hwnd: HWND, max_chars: usize) -> String {
     let len = unsafe { GetWindowTextLengthW(hwnd) };
     if len <= 0 {
         return String::new();
@@ -113,8 +111,21 @@ pub fn extend_tick_count_32(tick: u32, now: u64) -> u64 {
     now.saturating_sub(age)
 }
 
+/// Map a sampled LASTINPUTINFO tick into the current 64-bit tick epoch.
+///
+/// A modular delta greater than half the u32 range is indistinguishable from
+/// a tick just ahead of `now`, so reject it instead of turning (for example)
+/// `now + 1` into an input almost 49.7 days in the past.
+fn extend_last_input_tick_count_32(tick: u32, now: u64) -> Option<u64> {
+    let age = (now as u32).wrapping_sub(tick);
+    if age > i32::MAX as u32 {
+        return None;
+    }
+    now.checked_sub(age as u64)
+}
+
 /// Last real keyboard/mouse input on the boot-relative monotonic timeline.
-pub fn last_input_monotonic_millis(now: u64) -> Option<u64> {
+pub fn last_input_monotonic_millis(causal_now: u64) -> Option<u64> {
     unsafe {
         let mut info = LASTINPUTINFO {
             cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
@@ -123,7 +134,13 @@ pub fn last_input_monotonic_millis(now: u64) -> Option<u64> {
         if GetLastInputInfo(&mut info) == 0 {
             return None;
         }
-        Some(extend_tick_count_32(info.dwTime, now))
+
+        // Sample the 64-bit clock after LASTINPUTINFO so an input arriving
+        // between the two reads cannot appear one tick ahead and wrap back an
+        // entire u32 epoch. The caller's timestamp remains a causal bound.
+        let observed_now = GetTickCount64();
+        extend_last_input_tick_count_32(info.dwTime, observed_now)
+            .filter(|last_input| *last_input <= causal_now)
     }
 }
 
@@ -137,7 +154,7 @@ pub fn seconds_since_last_input() -> u64 {
 }
 
 /// EnumChildWindows 拿首个 child 窗口的 PID（用于 UWP ApplicationFrameHost）。
-pub fn first_child_pid_distinct(host_hwnd: HWND, host_pid: u32) -> Option<u32> {
+pub(crate) fn first_child_pid_distinct(host_hwnd: HWND, host_pid: u32) -> Option<u32> {
     struct Ctx {
         host_pid: u32,
         result: Option<u32>,
@@ -191,7 +208,7 @@ pub fn free_console() {
 
 #[cfg(test)]
 mod tests {
-    use super::extend_tick_count_32;
+    use super::{extend_last_input_tick_count_32, extend_tick_count_32};
 
     #[test]
     fn extends_tick_from_current_epoch() {
@@ -203,5 +220,20 @@ mod tests {
     fn extends_tick_across_u32_rollover() {
         let now = (u32::MAX as u64) + 17;
         assert_eq!(extend_tick_count_32(u32::MAX - 15, now), now - 32);
+    }
+
+    #[test]
+    fn last_input_tick_rejects_one_millisecond_ahead() {
+        let now = 123_456u64;
+        assert_eq!(extend_last_input_tick_count_32((now as u32) + 1, now), None);
+    }
+
+    #[test]
+    fn last_input_tick_extends_a_recent_tick_across_rollover() {
+        let now = (u32::MAX as u64) + 17;
+        assert_eq!(
+            extend_last_input_tick_count_32(u32::MAX - 15, now),
+            Some(now - 32)
+        );
     }
 }

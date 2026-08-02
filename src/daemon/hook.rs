@@ -21,8 +21,8 @@ use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetForegroundWindow,
-    GetMessageW, KillTimer, PeekMessageW, PostThreadMessageW, RegisterClassExW, SetTimer,
-    TranslateMessage, DEVICE_NOTIFY_WINDOW_HANDLE, EVENT_OBJECT_NAMECHANGE,
+    GetMessageW, KillTimer, PeekMessageW, PostQuitMessage, PostThreadMessageW, RegisterClassExW,
+    SetTimer, TranslateMessage, DEVICE_NOTIFY_WINDOW_HANDLE, EVENT_OBJECT_NAMECHANGE,
     EVENT_SYSTEM_FOREGROUND, HWND_MESSAGE, MSG, PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMECRITICAL,
     PBT_APMRESUMESUSPEND, PBT_APMSUSPEND, PM_NOREMOVE, WINEVENT_OUTOFCONTEXT,
     WINEVENT_SKIPOWNPROCESS, WM_DESTROY, WM_POWERBROADCAST, WM_QUIT, WM_TIMER,
@@ -30,11 +30,12 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 use super::aggregator::{MonoTime, TimePoint};
-use super::event_queue::{EventSender, ForegroundEvent, HookEvent, WindowId};
+use super::event_queue::{EventSender, ForegroundEvent, HookEvent, TimelineSendError, WindowId};
 use crate::platform::windows as platform;
 
 static SENDER: OnceLock<EventSender> = OnceLock::new();
 static WIN_EVENT_STOPPING: AtomicBool = AtomicBool::new(false);
+static CONTROL_QUEUE_OVERFLOWED: AtomicBool = AtomicBool::new(false);
 
 pub fn set_sender(sender: EventSender) -> std::io::Result<()> {
     SENDER.set(sender).map_err(|_| {
@@ -47,8 +48,20 @@ pub fn set_sender(sender: EventSender) -> std::io::Result<()> {
 
 fn send_timeline(event: HookEvent) {
     if let Some(sender) = SENDER.get() {
-        let _ = sender.send_timeline(event);
+        if sender.send_timeline(event) == Err(TimelineSendError::Full) {
+            CONTROL_QUEUE_OVERFLOWED.store(true, Ordering::Release);
+            // Never wait in WndProc. End the main loop so normal teardown can
+            // enqueue Shutdown through its dedicated reserve and surface the
+            // overflow through crash.log in background mode.
+            unsafe {
+                PostQuitMessage(1);
+            }
+        }
     }
+}
+
+pub fn control_queue_overflowed() -> bool {
+    CONTROL_QUEUE_OVERFLOWED.load(Ordering::Acquire)
 }
 
 /// Explicitly stop the aggregator after hooks and the message window are gone.

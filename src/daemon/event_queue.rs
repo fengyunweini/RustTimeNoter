@@ -1,8 +1,11 @@
 //! Bounded hand-off between Win32 callbacks and the aggregator thread.
 //!
-//! Foreground and control events are lossless and FIFO. Their producer applies
-//! backpressure at a fixed timeline capacity, with one producer-owned overflow
-//! slot preserving the order of the foreground event that triggers pressure.
+//! Foreground and control events share one logical FIFO order while using
+//! separate bounded lanes. Foreground applies backpressure on the dedicated
+//! WinEvent thread, with one producer-owned overflow slot preserving enqueue
+//! order. The main-window control lane never waits for the consumer; exhausting
+//! its fixed reserve is reported so the daemon can fail visibly instead of
+//! blocking Windows power/session messages.
 //! Title notifications are deliberately lower priority: at most one
 //! current-foreground title is kept, and storms are coalesced over a short,
 //! non-sliding window.
@@ -19,6 +22,7 @@ use windows_sys::Win32::Foundation::HWND;
 use super::aggregator::{MonoTime, TimePoint};
 
 pub const TIMELINE_CAPACITY: usize = 1_024;
+pub const CONTROL_CAPACITY: usize = 64;
 const TITLE_COALESCE_WINDOW: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +35,23 @@ impl std::fmt::Display for QueueDisconnected {
 }
 
 impl std::error::Error for QueueDisconnected {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimelineSendError {
+    Disconnected,
+    Full,
+}
+
+impl std::fmt::Display for TimelineSendError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Disconnected => formatter.write_str("event queue receiver disconnected"),
+            Self::Full => formatter.write_str("control event reserve exhausted"),
+        }
+    }
+}
+
+impl std::error::Error for TimelineSendError {}
 
 /// An HWND represented as an integer so callback payloads are safe to move to
 /// the aggregator thread. It is an opaque lookup key, never dereferenced.
@@ -108,11 +129,21 @@ struct PendingTitle {
 }
 
 #[derive(Debug)]
+struct SequencedEvent {
+    sequence: u64,
+    event: HookEvent,
+}
+
+#[derive(Debug)]
 struct State {
-    timeline: VecDeque<HookEvent>,
+    foreground: VecDeque<SequencedEvent>,
+    control: VecDeque<SequencedEvent>,
     pending_title: Option<PendingTitle>,
     current_foreground: Option<CurrentForeground>,
+    next_sequence: u64,
     next_generation: u64,
+    control_overflow_sequence: Option<u64>,
+    shutdown_pending: bool,
     sender_count: usize,
     receiver_alive: bool,
 }
@@ -120,6 +151,7 @@ struct State {
 #[derive(Debug)]
 struct Shared {
     capacity: usize,
+    control_capacity: usize,
     title_coalesce_window: Duration,
     state: Mutex<State>,
     available: Condvar,
@@ -163,7 +195,7 @@ impl EventSender {
     /// at most one event can occupy this overflow slot.
     pub fn send_foreground(&self, mut event: ForegroundEvent) -> Result<(), QueueDisconnected> {
         let mut state = lock(&self.shared.state);
-        while state.timeline.len() > self.shared.capacity && state.receiver_alive {
+        while state.foreground.len() > self.shared.capacity && state.receiver_alive {
             state = wait(&self.shared.space, state);
         }
         if !state.receiver_alive {
@@ -178,10 +210,14 @@ impl EventSender {
         });
         // A title from the previous foreground can no longer be relevant.
         state.pending_title = None;
-        state.timeline.push_back(HookEvent::Foreground(event));
+        let sequence = take_sequence(&mut state);
+        state.foreground.push_back(SequencedEvent {
+            sequence,
+            event: HookEvent::Foreground(event),
+        });
         self.shared.available.notify_one();
 
-        while state.timeline.len() > self.shared.capacity && state.receiver_alive {
+        while state.foreground.len() > self.shared.capacity && state.receiver_alive {
             state = wait(&self.shared.space, state);
         }
         if state.receiver_alive {
@@ -230,30 +266,56 @@ impl EventSender {
         true
     }
 
-    /// Queue a non-title event in the lossless timeline.
-    pub fn send_timeline(&self, event: HookEvent) -> Result<(), QueueDisconnected> {
+    /// Try to queue a non-title event in the bounded control lane.
+    ///
+    /// This never waits for the consumer, so it is safe in the main window
+    /// procedure. The first event beyond ordinary capacity is preserved in a
+    /// one-event overflow reserve and returns [`TimelineSendError::Full`] so
+    /// the daemon can stop visibly. A second additional slot is reserved for
+    /// shutdown, allowing teardown to drain the aggregator without losing the
+    /// control event that triggered pressure.
+    pub fn send_timeline(&self, event: HookEvent) -> Result<(), TimelineSendError> {
         debug_assert!(!matches!(
             event,
             HookEvent::Foreground(_) | HookEvent::Title(_)
         ));
         let mut state = lock(&self.shared.state);
-        while state.timeline.len() >= self.shared.capacity && state.receiver_alive {
-            state = wait(&self.shared.space, state);
-        }
         if !state.receiver_alive {
-            return Err(QueueDisconnected);
+            return Err(TimelineSendError::Disconnected);
         }
-        state.timeline.push_back(event);
+
+        let is_shutdown = matches!(event, HookEvent::Shutdown { .. });
+        let has_capacity = state.control.len() < self.shared.control_capacity;
+        let can_use_overflow_reserve = !is_shutdown
+            && state.control.len() == self.shared.control_capacity
+            && state.control_overflow_sequence.is_none();
+        let can_use_shutdown_reserve = is_shutdown
+            && !state.shutdown_pending
+            && state.control.len() <= self.shared.control_capacity.saturating_add(1);
+        if !has_capacity && !can_use_overflow_reserve && !can_use_shutdown_reserve {
+            return Err(TimelineSendError::Full);
+        }
+
+        let sequence = take_sequence(&mut state);
+        state.control.push_back(SequencedEvent { sequence, event });
+        if can_use_overflow_reserve {
+            state.control_overflow_sequence = Some(sequence);
+        }
+        state.shutdown_pending |= is_shutdown;
         drop(state);
         self.shared.available.notify_one();
-        Ok(())
+        if can_use_overflow_reserve {
+            Err(TimelineSendError::Full)
+        } else {
+            Ok(())
+        }
     }
 
     #[cfg(test)]
     fn pending_counts(&self) -> (usize, usize) {
         let state = lock(&self.shared.state);
         (
-            state.timeline.len(),
+            state.foreground.len() + state.control.len(),
             usize::from(state.pending_title.is_some()),
         )
     }
@@ -271,9 +333,11 @@ impl EventReceiver {
         let mut state = lock(&self.shared.state);
 
         loop {
-            if let Some(event) = state.timeline.pop_front() {
+            if let Some((event, freed_foreground_slot)) = pop_next_timeline(&mut state) {
                 drop(state);
-                self.shared.space.notify_all();
+                if freed_foreground_slot {
+                    self.shared.space.notify_all();
+                }
                 return Ok(event);
             }
 
@@ -324,22 +388,40 @@ impl Drop for EventReceiver {
 }
 
 pub fn channel(capacity: usize) -> (EventSender, EventReceiver) {
-    channel_with_title_window(capacity, TITLE_COALESCE_WINDOW)
+    channel_with_limits(capacity, CONTROL_CAPACITY, TITLE_COALESCE_WINDOW)
 }
 
+#[cfg(test)]
 fn channel_with_title_window(
     capacity: usize,
     title_coalesce_window: Duration,
 ) -> (EventSender, EventReceiver) {
+    channel_with_limits(capacity, CONTROL_CAPACITY, title_coalesce_window)
+}
+
+fn channel_with_limits(
+    capacity: usize,
+    control_capacity: usize,
+    title_coalesce_window: Duration,
+) -> (EventSender, EventReceiver) {
     assert!(capacity > 0, "event timeline capacity must be positive");
+    assert!(
+        control_capacity > 0,
+        "control event capacity must be positive"
+    );
     let shared = Arc::new(Shared {
         capacity,
+        control_capacity,
         title_coalesce_window,
         state: Mutex::new(State {
-            timeline: VecDeque::with_capacity(capacity),
+            foreground: VecDeque::with_capacity(capacity.saturating_add(1)),
+            control: VecDeque::with_capacity(control_capacity.saturating_add(2)),
             pending_title: None,
             current_foreground: None,
+            next_sequence: 0,
             next_generation: 0,
+            control_overflow_sequence: None,
+            shutdown_pending: false,
             sender_count: 1,
             receiver_alive: true,
         }),
@@ -352,6 +434,44 @@ fn channel_with_title_window(
         },
         EventReceiver { shared },
     )
+}
+
+fn take_sequence(state: &mut State) -> u64 {
+    let sequence = state.next_sequence;
+    state.next_sequence = state
+        .next_sequence
+        .checked_add(1)
+        .expect("event queue sequence exhausted");
+    sequence
+}
+
+/// Pop the earliest event across the two bounded lanes. The boolean indicates
+/// whether a foreground slot was freed and a blocked WinEvent producer should
+/// be woken.
+fn pop_next_timeline(state: &mut State) -> Option<(HookEvent, bool)> {
+    let take_foreground = match (state.foreground.front(), state.control.front()) {
+        (Some(foreground), Some(control)) => foreground.sequence < control.sequence,
+        (Some(_), None) => true,
+        (None, Some(_)) => false,
+        (None, None) => return None,
+    };
+
+    if take_foreground {
+        state
+            .foreground
+            .pop_front()
+            .map(|queued| (queued.event, true))
+    } else {
+        state.control.pop_front().map(|queued| {
+            if state.control_overflow_sequence == Some(queued.sequence) {
+                state.control_overflow_sequence = None;
+            }
+            if matches!(queued.event, HookEvent::Shutdown { .. }) {
+                state.shutdown_pending = false;
+            }
+            (queued.event, false)
+        })
+    }
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -436,7 +556,7 @@ mod tests {
     }
 
     #[test]
-    fn foreground_is_enqueued_before_backpressure_so_control_cannot_overtake_it() {
+    fn nonblocking_control_cannot_overtake_an_enqueued_foreground() {
         let (sender, receiver) = channel_with_title_window(2, Duration::ZERO);
         sender.send_foreground(foreground(1, 10)).unwrap();
         sender.send_foreground(foreground(2, 20)).unwrap();
@@ -474,15 +594,15 @@ mod tests {
                 .unwrap();
             control_returned_tx.send(()).unwrap();
         });
+        control_returned_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("control sender blocked behind foreground pressure");
 
         let mut observed = Vec::new();
         for _ in 0..4 {
             observed.push(receiver.recv_timeout(Duration::from_secs(1)).unwrap());
         }
         foreground_returned_rx
-            .recv_timeout(Duration::from_secs(1))
-            .unwrap();
-        control_returned_rx
             .recv_timeout(Duration::from_secs(1))
             .unwrap();
         foreground_producer.join().unwrap();
@@ -505,6 +625,50 @@ mod tests {
                 }),
                 HookEvent::Suspend { .. }
             ]
+        ));
+    }
+
+    #[test]
+    fn control_overflow_event_is_preserved_and_shutdown_has_a_dedicated_slot() {
+        let (sender, receiver) = channel_with_limits(1, 1, Duration::ZERO);
+        sender
+            .send_timeline(HookEvent::IdleTick {
+                at: TimePoint::new(10, 10_010),
+                last_input: Some(MonoTime::from_millis(10)),
+            })
+            .unwrap();
+
+        assert_eq!(
+            sender.send_timeline(HookEvent::SessionLock {
+                at: TimePoint::new(20, 10_020),
+                last_input: Some(MonoTime::from_millis(20)),
+            }),
+            Err(TimelineSendError::Full)
+        );
+        assert_eq!(
+            sender.send_timeline(HookEvent::Resume {
+                at: TimePoint::new(25, 10_025),
+            }),
+            Err(TimelineSendError::Full)
+        );
+        sender
+            .send_timeline(HookEvent::Shutdown {
+                at: TimePoint::new(30, 10_030),
+                last_input: Some(MonoTime::from_millis(30)),
+            })
+            .expect("shutdown must use its dedicated reserve slot");
+
+        assert!(matches!(
+            receiver.recv_timeout(Duration::from_secs(1)).unwrap(),
+            HookEvent::IdleTick { .. }
+        ));
+        assert!(matches!(
+            receiver.recv_timeout(Duration::from_secs(1)).unwrap(),
+            HookEvent::SessionLock { .. }
+        ));
+        assert!(matches!(
+            receiver.recv_timeout(Duration::from_secs(1)).unwrap(),
+            HookEvent::Shutdown { .. }
         ));
     }
 
