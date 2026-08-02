@@ -2,11 +2,10 @@
 //!
 //! 入口：[`run`]，由 `main.rs` 在无参分发或 service 启动时调用。
 
-#![cfg(windows)]
-
 pub mod aggregator;
-pub mod resolver;
+pub mod event_queue;
 pub mod hook;
+pub mod resolver;
 pub mod runtime;
 pub mod tray;
 

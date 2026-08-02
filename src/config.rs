@@ -5,6 +5,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+pub const MAX_TITLE_CHARS: usize = 4_096;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
@@ -41,9 +43,8 @@ impl Default for Config {
 impl Config {
     pub fn load(path: &Path) -> std::io::Result<Self> {
         match std::fs::read_to_string(path) {
-            Ok(s) => toml::from_str(&s).map_err(|e| {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
-            }),
+            Ok(s) => toml::from_str(&s)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(e) => Err(e),
         }
@@ -60,6 +61,12 @@ impl Config {
 
     pub fn afk_threshold_secs(&self) -> u64 {
         self.afk_minutes as u64 * 60
+    }
+
+    /// Bound callback-time allocation even if a config file contains an
+    /// accidental or hostile `u32::MAX` title length.
+    pub fn effective_title_max_chars(&self) -> usize {
+        (self.title_max_chars as usize).min(MAX_TITLE_CHARS)
     }
 
     pub fn title_blacklisted(&self, exe_basename: &str) -> bool {
@@ -88,5 +95,14 @@ mod tests {
         let _ = std::fs::remove_file(&p);
         let c = Config::load(&p).unwrap();
         assert_eq!(c.afk_minutes, 5);
+    }
+
+    #[test]
+    fn title_capture_allocation_is_bounded() {
+        let config = Config {
+            title_max_chars: u32::MAX,
+            ..Config::default()
+        };
+        assert_eq!(config.effective_title_max_chars(), MAX_TITLE_CHARS);
     }
 }

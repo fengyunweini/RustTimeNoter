@@ -43,7 +43,13 @@ impl Cipher {
         let nonce = Nonce::from_slice(&nonce_bytes);
         let ct = self
             .inner
-            .encrypt(nonce, Payload { msg: plaintext, aad })
+            .encrypt(
+                nonce,
+                Payload {
+                    msg: plaintext,
+                    aad,
+                },
+            )
             .expect("aes-gcm encrypt never fails for valid key");
         let mut out = Vec::with_capacity(4 + NONCE_LEN + ct.len());
         out.extend_from_slice(&(plaintext.len() as u32).to_le_bytes());
@@ -107,9 +113,8 @@ pub fn load_or_create_master_key(
 ) -> std::io::Result<MasterKey> {
     if key_file.exists() {
         let blob = std::fs::read(key_file)?;
-        let raw = unwrap_blob(&blob).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
-        })?;
+        let raw = unwrap_blob(&blob)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
         if raw.len() != KEY_LEN {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -124,9 +129,8 @@ pub fn load_or_create_master_key(
         std::fs::create_dir_all(parent)?;
     }
     let key = MasterKey::new_random();
-    let blob = wrap_blob(&key.0, machine_scope).map_err(|e| {
-        std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
-    })?;
+    let blob =
+        wrap_blob(&key.0, machine_scope).map_err(|e| std::io::Error::other(e.to_string()))?;
     std::fs::write(key_file, blob)?;
     Ok(key)
 }
@@ -135,10 +139,10 @@ pub fn load_or_create_master_key(
 fn wrap_blob(plain: &[u8], machine_scope: bool) -> Result<Vec<u8>, String> {
     use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Cryptography::{
-        CryptProtectData, CRYPT_INTEGER_BLOB, CRYPTPROTECT_LOCAL_MACHINE, CRYPTPROTECT_UI_FORBIDDEN,
+        CryptProtectData, CRYPTPROTECT_LOCAL_MACHINE, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
     };
 
-    let mut in_blob = CRYPT_INTEGER_BLOB {
+    let in_blob = CRYPT_INTEGER_BLOB {
         cbData: plain.len() as u32,
         pbData: plain.as_ptr() as *mut u8,
     };
@@ -152,7 +156,7 @@ fn wrap_blob(plain: &[u8], machine_scope: bool) -> Result<Vec<u8>, String> {
     }
     let ok = unsafe {
         CryptProtectData(
-            &mut in_blob,
+            &in_blob,
             std::ptr::null(),
             std::ptr::null_mut(),
             std::ptr::null_mut(),
@@ -162,14 +166,12 @@ fn wrap_blob(plain: &[u8], machine_scope: bool) -> Result<Vec<u8>, String> {
         )
     };
     if ok == 0 {
-        return Err(format!(
-            "CryptProtectData failed: 0x{:08X}",
-            unsafe { windows_sys::Win32::Foundation::GetLastError() }
-        ));
+        return Err(format!("CryptProtectData failed: 0x{:08X}", unsafe {
+            windows_sys::Win32::Foundation::GetLastError()
+        }));
     }
-    let slice = unsafe {
-        std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec()
-    };
+    let slice =
+        unsafe { std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec() };
     unsafe {
         LocalFree(out_blob.pbData as _);
     }
@@ -180,9 +182,9 @@ fn wrap_blob(plain: &[u8], machine_scope: bool) -> Result<Vec<u8>, String> {
 fn unwrap_blob(blob: &[u8]) -> Result<Vec<u8>, String> {
     use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Cryptography::{
-        CryptUnprotectData, CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN,
+        CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
     };
-    let mut in_blob = CRYPT_INTEGER_BLOB {
+    let in_blob = CRYPT_INTEGER_BLOB {
         cbData: blob.len() as u32,
         pbData: blob.as_ptr() as *mut u8,
     };
@@ -192,7 +194,7 @@ fn unwrap_blob(blob: &[u8]) -> Result<Vec<u8>, String> {
     };
     let ok = unsafe {
         CryptUnprotectData(
-            &mut in_blob,
+            &in_blob,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             std::ptr::null_mut(),
@@ -202,14 +204,12 @@ fn unwrap_blob(blob: &[u8]) -> Result<Vec<u8>, String> {
         )
     };
     if ok == 0 {
-        return Err(format!(
-            "CryptUnprotectData failed: 0x{:08X}",
-            unsafe { windows_sys::Win32::Foundation::GetLastError() }
-        ));
+        return Err(format!("CryptUnprotectData failed: 0x{:08X}", unsafe {
+            windows_sys::Win32::Foundation::GetLastError()
+        }));
     }
-    let slice = unsafe {
-        std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec()
-    };
+    let slice =
+        unsafe { std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec() };
     unsafe {
         LocalFree(out_blob.pbData as _);
     }

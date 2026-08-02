@@ -65,7 +65,7 @@ pub fn run(paths: &AppPaths, machine_scope: bool) -> std::io::Result<()> {
 fn is_daemon_running() -> bool {
     use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
     use windows_sys::Win32::System::Threading::CreateMutexW;
-    let name: Vec<u16> = crate::MUTEX_NAME
+    let name: Vec<u16> = crate::daemon_mutex_name()
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect();

@@ -42,6 +42,43 @@ pub struct AppPaths {
 
 impl AppPaths {
     pub fn for_scope(scope: InstallScope) -> std::io::Result<Self> {
+        // Integration tests must never write into the user's real data root.
+        // Reject a one-sided override rather than silently falling through to
+        // the real user/service directory.
+        match (
+            std::env::var_os("RUSTTIMENOTER_TEST_ROOT"),
+            std::env::var_os("RUSTTIMENOTER_TEST_INSTANCE"),
+        ) {
+            (Some(root), Some(instance)) => {
+                if root.is_empty() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "RUSTTIMENOTER_TEST_ROOT must not be empty",
+                    ));
+                }
+                if instance.is_empty() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "RUSTTIMENOTER_TEST_INSTANCE must not be empty",
+                    ));
+                }
+                let root = Path::new(&root);
+                if !root.is_absolute() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "RUSTTIMENOTER_TEST_ROOT must be absolute",
+                    ));
+                }
+                return Ok(Self::from_root(root));
+            }
+            (None, None) => {}
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "RUSTTIMENOTER_TEST_ROOT and RUSTTIMENOTER_TEST_INSTANCE must be set together",
+                ))
+            }
+        }
         let root = scope_root(scope)?;
         Ok(Self::from_root(&root))
     }
