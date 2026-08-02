@@ -121,7 +121,7 @@ pub fn run(args: ReportArgs, paths: &AppPaths, machine_scope: bool) -> std::io::
     })?;
 
     let mut rows: Vec<_> = totals.into_iter().collect();
-    rows.sort_by(|a, b| b.1.cmp(&a.1));
+    rows.sort_by_key(|row| std::cmp::Reverse(row.1));
     rows.truncate(args.top);
 
     let total: u64 = rows.iter().map(|(_, s)| *s).sum();

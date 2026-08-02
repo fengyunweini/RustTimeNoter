@@ -107,13 +107,13 @@ pub fn run(args: ViewArgs, paths: &AppPaths, machine_scope: bool) -> std::io::Re
         .map(|(date, totals)| {
             let day_total: u64 = totals.values().sum();
             let mut rows: Vec<_> = totals.into_iter().collect();
-            rows.sort_by(|a, b| b.1.cmp(&a.1));
+            rows.sort_by_key(|row| std::cmp::Reverse(row.1));
             (date, rows, day_total)
         })
         .collect();
 
     let mut overall: Vec<_> = by_app_total.into_iter().collect();
-    overall.sort_by(|a, b| b.1.cmp(&a.1));
+    overall.sort_by_key(|row| std::cmp::Reverse(row.1));
     let overall_total: u64 = overall.iter().map(|(_, v)| *v).sum();
 
     let html = render_html(&overall, overall_total, &by_day, days, &paths.root);
