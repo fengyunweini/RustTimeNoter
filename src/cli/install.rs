@@ -38,33 +38,44 @@ MODE:
 ";
 
 pub fn parse_install(p: &mut lexopt::Parser) -> Result<InstallArgs, lexopt::Error> {
-    Ok(InstallArgs { mode: parse_mode(p)? })
+    Ok(InstallArgs {
+        mode: parse_mode(p)?,
+    })
 }
 
 pub fn parse_uninstall(p: &mut lexopt::Parser) -> Result<UninstallArgs, lexopt::Error> {
-    Ok(UninstallArgs { mode: parse_mode(p)? })
+    Ok(UninstallArgs {
+        mode: parse_mode(p)?,
+    })
 }
 
 fn parse_mode(p: &mut lexopt::Parser) -> Result<Mode, lexopt::Error> {
     let mut mode: Option<Mode> = None;
     while let Some(arg) = p.next()? {
         match arg {
-            Short('h') | Long("help") => { print!("{INSTALL_HELP}"); std::process::exit(0); }
+            Short('h') | Long("help") => {
+                print!("{INSTALL_HELP}");
+                std::process::exit(0);
+            }
             Value(v) => {
                 let s = v.to_string_lossy().into_owned();
                 mode = Some(match s.as_str() {
                     "autostart" => Mode::Autostart,
                     "service" => Mode::Service,
-                    other => return Err(lexopt::Error::UnexpectedValue {
-                        option: "<MODE>".into(),
-                        value: other.into(),
-                    }),
+                    other => {
+                        return Err(lexopt::Error::UnexpectedValue {
+                            option: "<MODE>".into(),
+                            value: other.into(),
+                        })
+                    }
                 });
             }
             _ => return Err(arg.unexpected()),
         }
     }
-    mode.ok_or(lexopt::Error::MissingValue { option: Some("<MODE>".into()) })
+    mode.ok_or(lexopt::Error::MissingValue {
+        option: Some("<MODE>".into()),
+    })
 }
 
 pub fn install(args: InstallArgs) -> std::io::Result<()> {
@@ -104,7 +115,9 @@ fn uninstall_autostart() -> std::io::Result<()> {
 }
 
 fn copy_self_to(dest: &Path) -> std::io::Result<PathBuf> {
-    if let Some(parent) = dest.parent() { std::fs::create_dir_all(parent)?; }
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let cur = std::env::current_exe()?;
     if cur != dest {
         match std::fs::copy(&cur, dest) {
@@ -112,7 +125,10 @@ fn copy_self_to(dest: &Path) -> std::io::Result<PathBuf> {
             Err(e) if e.raw_os_error() == Some(32) => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::PermissionDenied,
-                    format!("cannot overwrite {} (file in use). Stop the daemon first.", dest.display()),
+                    format!(
+                        "cannot overwrite {} (file in use). Stop the daemon first.",
+                        dest.display()
+                    ),
                 ));
             }
             Err(e) => return Err(e),
@@ -122,15 +138,23 @@ fn copy_self_to(dest: &Path) -> std::io::Result<PathBuf> {
 }
 
 fn set_run_value(name: &str, value: &str) -> std::io::Result<()> {
-    let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Run\0".encode_utf16().collect();
+    let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Run\0"
+        .encode_utf16()
+        .collect();
     let name_w: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
     let value_w: Vec<u16> = value.encode_utf16().chain(std::iter::once(0)).collect();
     unsafe {
         let mut hkey: HKEY = std::ptr::null_mut();
         let r = RegCreateKeyExW(
-            HKEY_CURRENT_USER, subkey.as_ptr(), 0, std::ptr::null_mut(),
-            REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, std::ptr::null(),
-            &mut hkey, std::ptr::null_mut(),
+            HKEY_CURRENT_USER,
+            subkey.as_ptr(),
+            0,
+            std::ptr::null_mut(),
+            REG_OPTION_NON_VOLATILE,
+            KEY_SET_VALUE,
+            std::ptr::null(),
+            &mut hkey,
+            std::ptr::null_mut(),
         );
         if r as u32 != ERROR_SUCCESS {
             return Err(std::io::Error::from_raw_os_error(r as i32));
@@ -139,7 +163,14 @@ fn set_run_value(name: &str, value: &str) -> std::io::Result<()> {
             value_w.as_ptr() as *const u8,
             value_w.len() * std::mem::size_of::<u16>(),
         );
-        let r2 = RegSetValueExW(hkey, name_w.as_ptr(), 0, REG_SZ, bytes.as_ptr(), bytes.len() as u32);
+        let r2 = RegSetValueExW(
+            hkey,
+            name_w.as_ptr(),
+            0,
+            REG_SZ,
+            bytes.as_ptr(),
+            bytes.len() as u32,
+        );
         RegCloseKey(hkey);
         if r2 as u32 != ERROR_SUCCESS {
             return Err(std::io::Error::from_raw_os_error(r2 as i32));
@@ -149,14 +180,22 @@ fn set_run_value(name: &str, value: &str) -> std::io::Result<()> {
 }
 
 fn delete_run_value(name: &str) -> std::io::Result<()> {
-    let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Run\0".encode_utf16().collect();
+    let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Run\0"
+        .encode_utf16()
+        .collect();
     let name_w: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
     unsafe {
         let mut hkey: HKEY = std::ptr::null_mut();
         let r = RegCreateKeyExW(
-            HKEY_CURRENT_USER, subkey.as_ptr(), 0, std::ptr::null_mut(),
-            REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, std::ptr::null(),
-            &mut hkey, std::ptr::null_mut(),
+            HKEY_CURRENT_USER,
+            subkey.as_ptr(),
+            0,
+            std::ptr::null_mut(),
+            REG_OPTION_NON_VOLATILE,
+            KEY_SET_VALUE,
+            std::ptr::null(),
+            &mut hkey,
+            std::ptr::null_mut(),
         );
         if r as u32 != ERROR_SUCCESS {
             return Err(std::io::Error::from_raw_os_error(r as i32));
@@ -243,12 +282,20 @@ fn svc_io_err(e: windows_service::Error) -> std::io::Error {
 fn trace(line: &str) {
     use std::io::Write;
     let path = std::env::var_os("ProgramData")
-        .map(|p| std::path::PathBuf::from(p).join("RustTimeNoter").join("service-trace.log"))
+        .map(|p| {
+            std::path::PathBuf::from(p)
+                .join("RustTimeNoter")
+                .join("service-trace.log")
+        })
         .unwrap_or_else(|| std::path::PathBuf::from("C:\\service-trace.log"));
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
@@ -260,7 +307,6 @@ fn trace(line: &str) {
 windows_service::define_windows_service!(ffi_service_main, service_main);
 
 fn service_main(_args: Vec<OsString>) {
-    use std::sync::mpsc::{self, Sender};
     use windows_service::service::{
         ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
         ServiceType,
@@ -269,13 +315,13 @@ fn service_main(_args: Vec<OsString>) {
 
     trace("service_main: enter");
 
-    let (stop_tx, _stop_rx) = mpsc::channel::<()>();
-    let stop_tx_for_handler: Sender<()> = stop_tx.clone();
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         match control_event {
             ServiceControl::Stop | ServiceControl::Shutdown => {
-                let _ = stop_tx_for_handler.send(());
-                let _ = crate::daemon::runtime::signal_stop();
+                request_service_stop(
+                    crate::daemon::hook::request_shutdown,
+                    crate::daemon::runtime::signal_stop,
+                );
                 ServiceControlHandlerResult::NoError
             }
             ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
@@ -310,7 +356,8 @@ fn service_main(_args: Vec<OsString>) {
 
     std::env::set_var("RUSTTIMENOTER_SCOPE", "machine");
     trace("service_main: calling daemon::run");
-    match crate::daemon::run(InstallScope::Machine) {
+    let result = crate::daemon::run(InstallScope::Machine);
+    match &result {
         Ok(()) => trace("service_main: daemon::run returned Ok"),
         Err(e) => trace(&format!("service_main: daemon::run returned Err: {e}")),
     }
@@ -319,13 +366,35 @@ fn service_main(_args: Vec<OsString>) {
         service_type: ServiceType::OWN_PROCESS,
         current_state: ServiceState::Stopped,
         controls_accepted: ServiceControlAccept::empty(),
-        exit_code: ServiceExitCode::Win32(0),
+        exit_code: service_exit_code(&result),
         checkpoint: 0,
         wait_hint: std::time::Duration::default(),
         process_id: None,
     });
     trace("service_main: exit");
-    let _ = stop_tx;
+}
+
+fn request_service_stop(
+    retain_request: impl FnOnce(),
+    wake_worker: impl FnOnce() -> std::io::Result<bool>,
+) {
+    // The SCM can deliver Stop after Running is published but before the
+    // daemon creates its named stop event. Retain intent before trying to wake.
+    retain_request();
+    let _ = wake_worker();
+}
+
+fn service_exit_code(result: &std::io::Result<()>) -> windows_service::service::ServiceExitCode {
+    use windows_service::service::ServiceExitCode;
+    match result {
+        Ok(()) => ServiceExitCode::Win32(0),
+        Err(error) => error
+            .raw_os_error()
+            .and_then(|code| u32::try_from(code).ok())
+            .filter(|code| *code != 0)
+            .map(ServiceExitCode::Win32)
+            .unwrap_or(ServiceExitCode::ServiceSpecific(1)),
+    }
 }
 
 pub fn run_service_dispatcher() -> std::io::Result<()> {
@@ -334,7 +403,54 @@ pub fn run_service_dispatcher() -> std::io::Result<()> {
     let r = service_dispatcher::start(SERVICE_NAME, ffi_service_main);
     match &r {
         Ok(()) => trace("run_service_dispatcher: dispatcher returned Ok"),
-        Err(e) => trace(&format!("run_service_dispatcher: dispatcher returned Err: {e}")),
+        Err(e) => trace(&format!(
+            "run_service_dispatcher: dispatcher returned Err: {e}"
+        )),
     }
     r.map_err(svc_io_err)
+}
+
+#[cfg(test)]
+mod service_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use windows_service::service::ServiceExitCode;
+
+    #[test]
+    fn stop_before_worker_event_exists_is_retained_before_failed_wake() {
+        for wake_result in [Ok(false), Err(std::io::Error::other("event unavailable"))] {
+            let requested = AtomicBool::new(false);
+            request_service_stop(
+                || requested.store(true, Ordering::SeqCst),
+                || {
+                    assert!(requested.load(Ordering::SeqCst));
+                    wake_result
+                },
+            );
+            // Initialization can now observe the request despite having had
+            // no named event to signal. No SCM or real daemon is involved.
+            assert!(requested.load(Ordering::SeqCst));
+        }
+    }
+
+    #[test]
+    fn failed_daemon_never_reports_successful_service_exit() {
+        assert!(matches!(
+            service_exit_code(&Ok(())),
+            ServiceExitCode::Win32(0)
+        ));
+        assert!(matches!(
+            service_exit_code(&Err(std::io::Error::from_raw_os_error(5))),
+            ServiceExitCode::Win32(5)
+        ));
+        for error in [
+            std::io::Error::other("write failed"),
+            std::io::Error::from_raw_os_error(0),
+        ] {
+            assert!(matches!(
+                service_exit_code(&Err(error)),
+                ServiceExitCode::ServiceSpecific(1)
+            ));
+        }
+    }
 }

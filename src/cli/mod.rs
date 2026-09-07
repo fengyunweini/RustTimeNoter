@@ -1,8 +1,8 @@
 //! 命令行解析（手写，零 clap，用 `lexopt` 做底层 token 流）。
 
-pub mod report;
-pub mod export;
 pub mod config_cmd;
+pub mod export;
+pub mod report;
 pub mod status;
 pub mod tail;
 pub mod view;
@@ -67,7 +67,7 @@ SUBCOMMANDS:
 impl Cli {
     pub fn parse() -> Result<Self, lexopt::Error> {
         let mut p = lexopt::Parser::from_env();
-        while let Some(arg) = p.next()? {
+        if let Some(arg) = p.next()? {
             match arg {
                 Short('h') | Long("help") => {
                     print!("{HELP}");

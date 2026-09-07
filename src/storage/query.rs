@@ -6,6 +6,7 @@ use chrono::NaiveDate;
 
 use super::crypto::Cipher;
 use super::log::LogReader;
+use super::model::{Record, RECORD_FLAG_GAP};
 use super::writer::{unix_to_utc_date, utc_midnight_unix};
 use crate::local_time::Calendar;
 use crate::paths::AppPaths;
@@ -20,6 +21,30 @@ pub struct LocalRecordSlice {
     pub app_id: u32,
     pub title_id: u32,
     pub flags: u8,
+}
+
+impl LocalRecordSlice {
+    pub fn is_gap(&self) -> bool {
+        self.flags & RECORD_FLAG_GAP != 0
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct QuerySummary {
+    pub gap_seconds: u64,
+    pub damaged_files: usize,
+}
+
+impl QuerySummary {
+    pub fn warning(&self) -> Option<String> {
+        if self.gap_seconds == 0 && self.damaged_files == 0 {
+            return None;
+        }
+        Some(format!(
+            "Incomplete capture: {} seconds excluded from usage; {} damaged log file(s) retained. Missing data is not idle time.",
+            self.gap_seconds, self.damaged_files
+        ))
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -40,11 +65,12 @@ pub fn visit_local_date_range<C, F>(
     from: NaiveDate,
     to: NaiveDate,
     mut visitor: F,
-) -> io::Result<()>
+) -> io::Result<QuerySummary>
 where
     C: Calendar + ?Sized,
     F: FnMut(LocalRecordSlice) -> io::Result<()>,
 {
+    let mut summary = QuerySummary::default();
     let days = build_day_boundaries(calendar, from, to)?;
     let range_start = days[0].start_unix;
     let range_end = days[days.len() - 1].start_unix;
@@ -55,7 +81,9 @@ where
     while shard_start < range_end {
         let shard_date = unix_to_utc_date(shard_start);
         let path = paths.log_file_for_day(shard_date.year, shard_date.month, shard_date.day);
-        let mut records = LogReader::new(cipher.clone(), shard_date).read_all(&path)?;
+        let day = LogReader::new(cipher.clone(), shard_date).read_day(&path)?;
+        summary.damaged_files += day.damage.len();
+        let mut records = exclude_uncertain_intervals(day.records)?;
         records.sort_by_key(|record| record.start_offset_secs);
         let mut shard_slices = Vec::new();
 
@@ -119,6 +147,9 @@ where
         // records, preserves the visitor's chronological contract.
         shard_slices.sort_by_key(|slice| slice.start_unix);
         for slice in shard_slices {
+            if slice.is_gap() {
+                summary.gap_seconds += u64::from(slice.duration_secs);
+            }
             visitor(slice)?;
         }
 
@@ -127,7 +158,79 @@ where
             .ok_or_else(|| invalid_data("UTC shard timestamp overflow"))?;
     }
 
-    Ok(())
+    Ok(summary)
+}
+
+/// Late corrections are append-only gap records. Union them and subtract them
+/// from old activity too: an already-written estimate must not survive a gap.
+fn exclude_uncertain_intervals(mut records: Vec<Record>) -> io::Result<Vec<Record>> {
+    let mut gaps = Vec::<(u32, u32)>::new();
+    for record in &records {
+        let end = record
+            .start_offset_secs
+            .checked_add(record.duration_secs)
+            .filter(|end| *end <= 86_400)
+            .ok_or_else(|| invalid_data("record extends outside its UTC shard"))?;
+        if record.start_offset_secs >= 86_400 {
+            return Err(invalid_data("invalid record start"));
+        }
+        if record.flags & RECORD_FLAG_GAP != 0 && end > record.start_offset_secs {
+            gaps.push((record.start_offset_secs, end));
+        }
+    }
+    if gaps.is_empty() {
+        records.retain(|record| record.flags & RECORD_FLAG_GAP == 0 && record.duration_secs > 0);
+        return Ok(records);
+    }
+    gaps.sort_unstable();
+    let mut merged = Vec::<(u32, u32)>::new();
+    for (start, end) in gaps {
+        if let Some(last) = merged.last_mut().filter(|last| start <= last.1) {
+            last.1 = last.1.max(end);
+        } else {
+            merged.push((start, end));
+        }
+    }
+    let mut out = Vec::new();
+    for record in records
+        .into_iter()
+        .filter(|r| r.flags & RECORD_FLAG_GAP == 0)
+    {
+        let end = record.start_offset_secs + record.duration_secs;
+        let mut cursor = record.start_offset_secs;
+        let first = merged.partition_point(|gap| gap.1 <= cursor);
+        for &(gap_start, gap_end) in &merged[first..] {
+            if gap_start >= end {
+                break;
+            }
+            if gap_start > cursor {
+                out.push(Record {
+                    start_offset_secs: cursor,
+                    duration_secs: gap_start - cursor,
+                    ..record
+                });
+            }
+            cursor = cursor.max(gap_end).min(end);
+            if cursor >= end {
+                break;
+            }
+        }
+        if cursor < end {
+            out.push(Record {
+                start_offset_secs: cursor,
+                duration_secs: end - cursor,
+                ..record
+            });
+        }
+    }
+    out.extend(merged.into_iter().map(|(start, end)| Record {
+        start_offset_secs: start,
+        duration_secs: end - start,
+        app_id: 0,
+        title_id: 0,
+        flags: RECORD_FLAG_GAP,
+    }));
+    Ok(out)
 }
 
 /// Collecting convenience wrapper for short ranges and callers that need a Vec.

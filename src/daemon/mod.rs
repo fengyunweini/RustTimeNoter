@@ -4,9 +4,10 @@
 
 #![cfg(windows)]
 
+pub mod accounting;
 pub mod aggregator;
-pub mod resolver;
 pub mod hook;
+pub mod resolver;
 pub mod runtime;
 pub mod tray;
 

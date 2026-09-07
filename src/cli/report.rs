@@ -10,7 +10,7 @@ use crate::classifier::Classifier;
 use crate::local_time::{Calendar, SystemCalendar};
 use crate::paths::AppPaths;
 use crate::storage::crypto::{load_or_create_master_key, Cipher};
-use crate::storage::dict::Dict;
+use crate::storage::dict::DictReader;
 use crate::storage::query::visit_local_date_range;
 use crate::storage::writer::now_unix;
 
@@ -96,17 +96,20 @@ pub fn run(args: ReportArgs, paths: &AppPaths, machine_scope: bool) -> std::io::
     let (from, to) = resolve_range(&args, today)?;
     let key = load_or_create_master_key(&paths.key_file, machine_scope)?;
     let cipher = Cipher::new(&key);
-    let apps = Dict::open(&paths.apps_dict)?;
-    let titles = Dict::open(&paths.titles_dict)?;
+    let mut apps = DictReader::open(&paths.apps_dict)?;
+    let mut titles = DictReader::open(&paths.titles_dict)?;
     let classifier = Classifier::load(&paths.rules_file)?;
 
     let mut totals: HashMap<String, u64> = HashMap::new();
-    visit_local_date_range(paths, &cipher, &calendar, from, to, |r| {
-        let exe = apps.get(r.app_id).unwrap_or("?");
+    let quality = visit_local_date_range(paths, &cipher, &calendar, from, to, |r| {
+        if r.is_gap() {
+            return Ok(());
+        }
+        let exe = apps.resolve(r.app_id)?;
         let title = if r.title_id == 0 {
             None
         } else {
-            titles.get(r.title_id)
+            Some(titles.resolve(r.title_id)?)
         };
         let key = match args.by {
             By::App => display_app(exe),
@@ -119,12 +122,11 @@ pub fn run(args: ReportArgs, paths: &AppPaths, machine_scope: bool) -> std::io::
         *totals.entry(key).or_insert(0) += r.duration_secs as u64;
         Ok(())
     })?;
+    if let Some(warning) = quality.warning() {
+        eprintln!("{warning}");
+    }
 
-    let mut rows: Vec<_> = totals.into_iter().collect();
-    rows.sort_by(|a, b| b.1.cmp(&a.1));
-    rows.truncate(args.top);
-
-    let total: u64 = rows.iter().map(|(_, s)| *s).sum();
+    let (rows, total) = ranked_totals(totals, args.top);
     println!("Range: {}  →  {}", fmt_date(from), fmt_date(to));
     println!(
         "By: {:?}    Top: {}    Total in scope: {}",
@@ -141,6 +143,14 @@ pub fn run(args: ReportArgs, paths: &AppPaths, machine_scope: bool) -> std::io::
         println!("{:>12}  {:>5.1}%  {}", fmt_dur(*v), pct, k);
     }
     Ok(())
+}
+
+fn ranked_totals(totals: HashMap<String, u64>, top: usize) -> (Vec<(String, u64)>, u64) {
+    let total = totals.values().sum();
+    let mut rows: Vec<_> = totals.into_iter().collect();
+    rows.sort_by_key(|row| std::cmp::Reverse(row.1));
+    rows.truncate(top);
+    (rows, total)
 }
 
 fn display_app(exe_path: &str) -> String {
@@ -227,6 +237,17 @@ fn subtract_days(date: NaiveDate, days: u64) -> std::io::Result<NaiveDate> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn top_limits_rows_without_changing_range_total_or_percentage_denominator() {
+        let totals = HashMap::from([("a.exe".into(), 60), ("b.exe".into(), 40)]);
+        let (rows, total) = ranked_totals(totals.clone(), 1);
+        assert_eq!(rows, vec![("a.exe".into(), 60)]);
+        assert_eq!(total, 100);
+        assert_eq!(rows[0].1 as f64 * 100.0 / total as f64, 60.0);
+        assert_eq!(ranked_totals(totals, 0), (Vec::new(), 100));
+        assert_eq!(ranked_totals(HashMap::new(), 20), (Vec::new(), 0));
+    }
 
     fn args() -> ReportArgs {
         ReportArgs {

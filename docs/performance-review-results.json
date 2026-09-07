@@ -1,0 +1,1306 @@
+{
+  "date": "2026-09-05",
+  "comparison": "Previous optimization vs reliability self-review; no new comparison against master",
+  "environment": {
+    "cpu": "AMD Ryzen 9 7945HX",
+    "logical_processors": 32,
+    "windows_build": 26200,
+    "rustc": "1.97.1",
+    "build": "release, opt-level=z, fat LTO, x64 MSVC, stripped"
+  },
+  "order": [
+    "base",
+    "next",
+    "next",
+    "base"
+  ],
+  "raw_directory": "target\\perf-review-20260905",
+  "binaries": {
+    "before": {
+      "path": "target\\perf-review-20260905\\before.exe",
+      "bytes": 1054208,
+      "sha256": "a9da1a04b0d9e471c4ff9860b993af1acac927092143609c7258069ce933819f"
+    },
+    "after": {
+      "path": "target\\perf-review-20260905\\after.exe",
+      "bytes": 1057792,
+      "sha256": "82dfa09b2a72b7f76e1646b2c859d65df88d35945f4e4961fb5647d43ac166da"
+    }
+  },
+  "accounting": [
+    {
+      "workload": "samples_30s",
+      "versions": {
+        "base": {
+          "trials_ms": [
+            38.975,
+            41.4624,
+            41.911,
+            42.0793,
+            41.6768,
+            42.2045,
+            38.8702,
+            42.0051,
+            49.0475,
+            45.6528,
+            40.3624,
+            43.4609,
+            42.5666,
+            40.3999
+          ],
+          "median_ms": 41.95805,
+          "events": 100000,
+          "allocations": 699997,
+          "allocated_bytes": 92199679,
+          "peak_extra_live_bytes": 1347,
+          "accounting_size_bytes": 296,
+          "segments": 100000,
+          "gaps": 0,
+          "duration_secs": 2999971,
+          "checkpoints": 100000,
+          "overlap": false,
+          "output_digest": "10939079030382735783"
+        },
+        "next": {
+          "trials_ms": [
+            33.8477,
+            34.7162,
+            34.1645,
+            33.5592,
+            32.2624,
+            31.8536,
+            31.608,
+            42.9501,
+            47.7291,
+            42.6793,
+            41.5563,
+            49.6638,
+            35.7055,
+            33.6116
+          ],
+          "median_ms": 34.440349999999995,
+          "events": 100000,
+          "allocations": 500000,
+          "allocated_bytes": 21800735,
+          "peak_extra_live_bytes": 1018,
+          "accounting_size_bytes": 296,
+          "segments": 100000,
+          "gaps": 0,
+          "duration_secs": 2999971,
+          "checkpoints": 100000,
+          "overlap": false,
+          "output_digest": "10939079030382735783"
+        }
+      }
+    },
+    {
+      "workload": "foreground_every_2s",
+      "versions": {
+        "base": {
+          "trials_ms": [
+            36.0802,
+            36.6155,
+            38.9454,
+            38.766,
+            38.2347,
+            38.4941,
+            38.4249,
+            36.1917,
+            37.4399,
+            36.3214,
+            37.1973,
+            34.4247,
+            37.0741,
+            40.7306
+          ],
+          "median_ms": 37.3186,
+          "events": 100000,
+          "allocations": 580000,
+          "allocated_bytes": 111520345,
+          "peak_extra_live_bytes": 1356,
+          "accounting_size_bytes": 296,
+          "segments": 93334,
+          "gaps": 0,
+          "duration_secs": 199999,
+          "checkpoints": 6668,
+          "overlap": false,
+          "output_digest": "1585360577014344622"
+        },
+        "next": {
+          "trials_ms": [
+            28.8731,
+            29.3278,
+            24.3533,
+            24.3077,
+            24.6622,
+            24.1734,
+            24.1761,
+            25.3654,
+            25.4237,
+            24.9979,
+            24.7113,
+            26.65,
+            27.4641,
+            27.0137
+          ],
+          "median_ms": 25.18165,
+          "events": 100000,
+          "allocations": 306668,
+          "allocated_bytes": 15307481,
+          "peak_extra_live_bytes": 1021,
+          "accounting_size_bytes": 296,
+          "segments": 93334,
+          "gaps": 0,
+          "duration_secs": 199999,
+          "checkpoints": 6668,
+          "overlap": false,
+          "output_digest": "1585360577014344622"
+        }
+      }
+    },
+    {
+      "workload": "titles_4_per_second",
+      "versions": {
+        "base": {
+          "trials_ms": [
+            37.653,
+            37.2156,
+            37.2916,
+            37.9076,
+            43.9396,
+            39.2879,
+            38.0668,
+            39.2243,
+            35.9255,
+            37.0172,
+            38.2159,
+            43.6772,
+            38.4669,
+            41.4961
+          ],
+          "median_ms": 38.14135,
+          "events": 100000,
+          "allocations": 401665,
+          "allocated_bytes": 47164283,
+          "peak_extra_live_bytes": 4366,
+          "accounting_size_bytes": 296,
+          "segments": 25000,
+          "gaps": 0,
+          "duration_secs": 25000,
+          "checkpoints": 835,
+          "overlap": false,
+          "output_digest": "9489603525843701138"
+        },
+        "next": {
+          "trials_ms": [
+            32.4468,
+            32.3175,
+            33.3721,
+            34.39,
+            32.8373,
+            32.689,
+            32.3982,
+            37.6952,
+            37.9837,
+            36.6225,
+            36.0117,
+            38.8112,
+            35.8962,
+            35.8441
+          ],
+          "median_ms": 35.11705,
+          "events": 100000,
+          "allocations": 327503,
+          "allocated_bytes": 21059259,
+          "peak_extra_live_bytes": 3750,
+          "accounting_size_bytes": 296,
+          "segments": 25000,
+          "gaps": 0,
+          "duration_secs": 25000,
+          "checkpoints": 835,
+          "overlap": false,
+          "output_digest": "9489603525843701138"
+        }
+      }
+    },
+    {
+      "workload": "burst_400_per_second_ordered",
+      "versions": {
+        "base": {
+          "trials_ms": [
+            22.6198,
+            22.1032,
+            25.3618,
+            24.7791,
+            22.6117,
+            21.5118,
+            21.9747,
+            24.6017,
+            24.3737,
+            23.5882,
+            21.9286,
+            23.7944,
+            22.9592,
+            28.3977
+          ],
+          "median_ms": 23.273699999999998,
+          "events": 100000,
+          "allocations": 201254,
+          "allocated_bytes": 7093551,
+          "peak_extra_live_bytes": 168734,
+          "accounting_size_bytes": 296,
+          "segments": 250,
+          "gaps": 0,
+          "duration_secs": 250,
+          "checkpoints": 249,
+          "overlap": false,
+          "output_digest": "1378179610809119010"
+        },
+        "next": {
+          "trials_ms": [
+            21.0483,
+            21.625,
+            22.5379,
+            23.577,
+            22.4087,
+            23.4177,
+            23.7163,
+            24.1528,
+            24.1345,
+            23.9336,
+            24.5903,
+            25.517,
+            23.992,
+            24.0126
+          ],
+          "median_ms": 23.82495,
+          "events": 100000,
+          "allocations": 200758,
+          "allocated_bytes": 6918959,
+          "peak_extra_live_bytes": 168118,
+          "accounting_size_bytes": 296,
+          "segments": 250,
+          "gaps": 0,
+          "duration_secs": 250,
+          "checkpoints": 249,
+          "overlap": false,
+          "output_digest": "1378179610809119010"
+        }
+      }
+    },
+    {
+      "workload": "burst_400_per_second_reordered",
+      "versions": {
+        "base": {
+          "trials_ms": [
+            33.7702,
+            38.1753,
+            34.7289,
+            34.482,
+            35.1443,
+            34.5093,
+            34.7817,
+            36.1401,
+            33.5219,
+            34.8203,
+            34.8509,
+            36.7653,
+            38.1778,
+            36.0099
+          ],
+          "median_ms": 34.8356,
+          "events": 100000,
+          "allocations": 201254,
+          "allocated_bytes": 7093551,
+          "peak_extra_live_bytes": 168734,
+          "accounting_size_bytes": 296,
+          "segments": 250,
+          "gaps": 0,
+          "duration_secs": 250,
+          "checkpoints": 249,
+          "overlap": false,
+          "output_digest": "1378179610809119010"
+        },
+        "next": {
+          "trials_ms": [
+            32.6704,
+            31.571,
+            31.5502,
+            33.2211,
+            39.3104,
+            45.485,
+            46.9258,
+            35.1051,
+            34.9099,
+            35.6268,
+            35.3378,
+            34.6208,
+            32.6324,
+            33.7091
+          ],
+          "median_ms": 34.76535,
+          "events": 100000,
+          "allocations": 200758,
+          "allocated_bytes": 6918959,
+          "peak_extra_live_bytes": 168118,
+          "accounting_size_bytes": 296,
+          "segments": 250,
+          "gaps": 0,
+          "duration_secs": 250,
+          "checkpoints": 249,
+          "overlap": false,
+          "output_digest": "1378179610809119010"
+        }
+      }
+    }
+  ],
+  "storage": [
+    {
+      "scenario": "idle",
+      "versions": {
+        "base": {
+          "trials_ms": [
+            2200.2834,
+            2200.3115000000003,
+            2200.2886999999996,
+            2200.3795
+          ],
+          "median_ms": 2200.3001,
+          "allocations": 3.0,
+          "allocated_bytes": 1608.0,
+          "records": 0.0,
+          "live_heap_bytes_at_ack": 33288.0,
+          "file_bytes": 278.0
+        },
+        "next": {
+          "trials_ms": [
+            2200.1160999999997,
+            2200.4712999999997,
+            2200.4573,
+            2200.5685000000003
+          ],
+          "median_ms": 2200.4642999999996,
+          "allocations": 3.0,
+          "allocated_bytes": 1608.0,
+          "records": 0.0,
+          "live_heap_bytes_at_ack": 33288.0,
+          "file_bytes": 278.0
+        }
+      }
+    },
+    {
+      "scenario": "repeated_titles",
+      "versions": {
+        "base": {
+          "trials_ms": [
+            143.54749999999999,
+            149.2341,
+            139.1229,
+            138.4969
+          ],
+          "median_ms": 141.3352,
+          "allocations": 430.0,
+          "allocated_bytes": 121868.0,
+          "records": 4000.0,
+          "live_heap_bytes_at_ack": 71222.0,
+          "file_bytes": 89078.0
+        },
+        "next": {
+          "trials_ms": [
+            141.7979,
+            1182.9233000000002,
+            160.3632,
+            142.93259999999998
+          ],
+          "median_ms": 151.6479,
+          "allocations": 429.0,
+          "allocated_bytes": 119692.0,
+          "records": 4000.0,
+          "live_heap_bytes_at_ack": 69046.0,
+          "file_bytes": 89078.0
+        }
+      }
+    },
+    {
+      "scenario": "unique_titles",
+      "versions": {
+        "base": {
+          "trials_ms": [
+            297.9567,
+            297.3333,
+            283.6813,
+            288.8347
+          ],
+          "median_ms": 293.084,
+          "allocations": 8214.0,
+          "allocated_bytes": 1849230.0,
+          "records": 4000.0,
+          "live_heap_bytes_at_ack": 950582.0,
+          "file_bytes": 673750.0
+        },
+        "next": {
+          "trials_ms": [
+            299.878,
+            285.93980000000005,
+            283.1691,
+            286.9393
+          ],
+          "median_ms": 286.43955000000005,
+          "allocations": 8213.0,
+          "allocated_bytes": 1847054.0,
+          "records": 4000.0,
+          "live_heap_bytes_at_ack": 948406.0,
+          "file_bytes": 673750.0
+        }
+      }
+    }
+  ],
+  "resolver": [
+    {
+      "workload": "resolver",
+      "capture_titles": false,
+      "versions": {
+        "base": {
+          "trials_ms": [
+            6.8812,
+            6.8004,
+            6.8761,
+            6.925,
+            8.845,
+            6.9977,
+            8.1334,
+            9.3248,
+            7.7922,
+            6.8778
+          ],
+          "median_ms": 6.9613499999999995,
+          "iterations": 20000,
+          "title_max": 256,
+          "title_utf16_units": 52
+        },
+        "next": {
+          "trials_ms": [
+            7.0536,
+            7.0661,
+            7.1667,
+            7.5885,
+            7.6349,
+            7.498,
+            7.1697,
+            7.0978,
+            7.1678,
+            7.1275
+          ],
+          "median_ms": 7.167249999999999,
+          "iterations": 20000,
+          "title_max": 256,
+          "title_utf16_units": 52
+        }
+      }
+    },
+    {
+      "workload": "resolver",
+      "capture_titles": true,
+      "versions": {
+        "base": {
+          "trials_ms": [
+            16.7622,
+            17.0482,
+            18.5387,
+            17.3035,
+            16.7416,
+            16.456,
+            16.5851,
+            16.6302,
+            16.4482,
+            17.7071
+          ],
+          "median_ms": 16.7519,
+          "iterations": 20000,
+          "title_max": 256,
+          "title_utf16_units": 52
+        },
+        "next": {
+          "trials_ms": [
+            14.1675,
+            14.6,
+            14.0536,
+            14.2898,
+            13.6981,
+            14.3469,
+            14.8416,
+            14.4539,
+            13.7562,
+            13.7604
+          ],
+          "median_ms": 14.22865,
+          "iterations": 20000,
+          "title_max": 256,
+          "title_utf16_units": 52
+        }
+      }
+    },
+    {
+      "workload": "resolver-long",
+      "capture_titles": false,
+      "versions": {
+        "base": {
+          "trials_ms": [
+            7.0084,
+            7.3352,
+            6.8606,
+            6.8881,
+            6.8171,
+            7.0668,
+            6.9034,
+            6.8187,
+            6.8685,
+            6.8051
+          ],
+          "median_ms": 6.878299999999999,
+          "iterations": 20000,
+          "title_max": 4096,
+          "title_utf16_units": 2080
+        },
+        "next": {
+          "trials_ms": [
+            7.1925,
+            7.1678,
+            7.2396,
+            7.5713,
+            7.0196,
+            7.1638,
+            7.3726,
+            7.7424,
+            7.4309,
+            7.3219
+          ],
+          "median_ms": 7.28075,
+          "iterations": 20000,
+          "title_max": 4096,
+          "title_utf16_units": 2080
+        }
+      }
+    },
+    {
+      "workload": "resolver-long",
+      "capture_titles": true,
+      "versions": {
+        "base": {
+          "trials_ms": [
+            168.837,
+            173.7367,
+            183.9482,
+            162.9402,
+            162.0565,
+            189.5614,
+            167.0039,
+            175.8509,
+            163.1216,
+            180.6193
+          ],
+          "median_ms": 171.28685000000002,
+          "iterations": 20000,
+          "title_max": 4096,
+          "title_utf16_units": 2080
+        },
+        "next": {
+          "trials_ms": [
+            133.2711,
+            125.1218,
+            122.4887,
+            126.0167,
+            128.5485,
+            134.8608,
+            130.6248,
+            128.8326,
+            131.9451,
+            127.4978
+          ],
+          "median_ms": 128.69055,
+          "iterations": 20000,
+          "title_max": 4096,
+          "title_utf16_units": 2080
+        }
+      }
+    }
+  ],
+  "log": [
+    {
+      "scenario": "read",
+      "versions": {
+        "base": {
+          "trials_ms": [
+            6.437,
+            6.7048000000000005,
+            6.674900000000001,
+            7.011400000000001,
+            6.4783,
+            8.476700000000001,
+            6.6408,
+            6.849600000000001,
+            6.8813,
+            6.535,
+            6.5848,
+            6.711,
+            6.8332,
+            6.815300000000001,
+            6.983099999999999,
+            7.1065,
+            7.5058,
+            7.3210999999999995
+          ],
+          "median_ms": 6.82425,
+          "allocations": 4110.0,
+          "allocated_bytes": 4955662.0,
+          "records": 65536,
+          "digest": "16749603877434818560",
+          "peak_heap_growth": 1320048.0
+        },
+        "next": {
+          "trials_ms": [
+            7.0723,
+            7.527399999999999,
+            7.065300000000001,
+            7.1138,
+            6.8799,
+            6.5137,
+            7.0285,
+            6.9777,
+            7.111700000000001,
+            6.532,
+            6.3754,
+            6.7345,
+            6.9553,
+            7.3115,
+            6.7929,
+            7.449,
+            6.548799999999999,
+            6.5961
+          ],
+          "median_ms": 6.9665,
+          "allocations": 15.0,
+          "allocated_bytes": 2629710.0,
+          "records": 65536,
+          "digest": "16749603877434818560",
+          "peak_heap_growth": 1319488.0
+        }
+      }
+    },
+    {
+      "scenario": "query",
+      "versions": {
+        "base": {
+          "trials_ms": [
+            8.889299999999999,
+            9.0965,
+            8.817200000000001,
+            8.5167,
+            9.1931,
+            8.4481,
+            8.7265,
+            9.2933,
+            8.9831,
+            8.6938,
+            8.8455,
+            8.855099999999998,
+            8.821399999999999,
+            8.738700000000001,
+            9.443200000000001,
+            9.9443,
+            9.4415,
+            10.0734
+          ],
+          "median_ms": 8.8722,
+          "allocations": 4165.0,
+          "allocated_bytes": 16491124.0,
+          "records": 65536,
+          "digest": "16749603877434818560",
+          "peak_heap_growth": 4194446.0
+        },
+        "next": {
+          "trials_ms": [
+            8.886099999999999,
+            9.3143,
+            8.639,
+            8.7823,
+            9.099200000000002,
+            8.706,
+            8.8026,
+            9.3375,
+            8.9351,
+            8.1492,
+            7.9127,
+            8.702200000000001,
+            8.127799999999999,
+            8.8225,
+            9.002799999999999,
+            8.5906,
+            8.318900000000001,
+            8.8767
+          ],
+          "median_ms": 8.792449999999999,
+          "allocations": 55.0,
+          "allocated_bytes": 11543812.0,
+          "records": 65536,
+          "digest": "16749603877434818560",
+          "peak_heap_growth": 4194446.0
+        }
+      }
+    },
+    {
+      "scenario": "reopen",
+      "versions": {
+        "base": {
+          "trials_ms": [
+            12.1383,
+            12.3521,
+            11.965800000000002,
+            11.954799999999999,
+            16.7328,
+            12.0481,
+            12.071200000000001,
+            12.3732,
+            12.2386,
+            11.968200000000001,
+            12.103399999999999,
+            12.1997,
+            12.2747,
+            12.7585,
+            12.9046,
+            13.1374,
+            13.138399999999999,
+            12.999600000000001
+          ],
+          "median_ms": 12.25665,
+          "allocations": 8209.0,
+          "allocated_bytes": 4670748.0,
+          "records": 65536,
+          "digest": "0",
+          "peak_heap_growth": 9558.0
+        },
+        "next": {
+          "trials_ms": [
+            6.9397,
+            6.611800000000001,
+            6.6022,
+            6.646400000000001,
+            6.2563,
+            6.8002,
+            6.5741000000000005,
+            6.713,
+            6.5702,
+            6.2572,
+            6.266400000000001,
+            6.4184,
+            7.2745,
+            6.8468,
+            6.2573,
+            6.53,
+            5.7871999999999995,
+            6.027900000000001
+          ],
+          "median_ms": 6.572150000000001,
+          "allocations": 14.0,
+          "allocated_bytes": 9710.0,
+          "records": 65536,
+          "digest": "0",
+          "peak_heap_growth": 8998.0
+        }
+      }
+    },
+    {
+      "scenario": "writer_startup",
+      "versions": {
+        "base": {
+          "trials_ms": [
+            1.1863,
+            1.2287000000000001,
+            1.5397,
+            1.2490999999999999,
+            1.5717999999999999,
+            1.2564,
+            1.396,
+            1.1979000000000002,
+            1.2841000000000002,
+            1.365,
+            1.3156,
+            1.2101,
+            1.2562,
+            1.368,
+            1.4813,
+            1.2746999999999997,
+            1.6158,
+            1.4833999999999998
+          ],
+          "median_ms": 1.2998500000000002,
+          "allocations": 46.0,
+          "allocated_bytes": 29371.0,
+          "records": 65536,
+          "digest": "0",
+          "peak_heap_growth": 13180.0
+        },
+        "next": {
+          "trials_ms": [
+            8.622200000000001,
+            8.224,
+            7.895700000000001,
+            7.951700000000001,
+            7.2815,
+            8.305299999999999,
+            8.2168,
+            7.9118,
+            8.268799999999999,
+            7.597900000000001,
+            7.3248,
+            7.493399999999999,
+            8.2234,
+            7.2444,
+            7.2902,
+            7.288399999999999,
+            7.4031,
+            7.150600000000001
+          ],
+          "median_ms": 7.7468,
+          "allocations": 74.0,
+          "allocated_bytes": 39763.0,
+          "records": 65536,
+          "digest": "0",
+          "peak_heap_growth": 13471.0
+        }
+      }
+    }
+  ],
+  "desktop_runs": [
+    {
+      "source": "target\\perf-review-20260905\\desktop\\20260905T082717054Z-d037bf3e-default\\resources.json",
+      "scenario": "Default",
+      "desktop": {
+        "ForegroundAvailable": true,
+        "ShellAvailable": true
+      },
+      "summary": [
+        {
+          "Label": "before",
+          "SampleCount": 65,
+          "MeasuredSeconds": 63.997021999999994,
+          "WorkingSetMeanBytes": 13817383.38,
+          "WorkingSetMedianBytes": 13819904,
+          "WorkingSetP95Bytes": 13824000,
+          "WorkingSetMinBytes": 13799424,
+          "WorkingSetMaxBytes": 13824000,
+          "PrivateMeanBytes": 2202891.82,
+          "PrivateMedianBytes": 2207744,
+          "PrivateP95Bytes": 2220032,
+          "PrivateMinBytes": 2174976,
+          "PrivateMaxBytes": 2220032,
+          "CpuMilliseconds": 0.0,
+          "CpuCyclesDelta": 11963276,
+          "CpuPercentOneCore": 0.0,
+          "CpuPercentMachine": 0.0,
+          "ThreadsMin": 7.0,
+          "ThreadsMax": 9.0,
+          "HandlesMin": 233.0,
+          "HandlesMax": 235.0,
+          "ReadOperations": 0,
+          "WriteOperations": 4,
+          "OtherOperations": 51,
+          "ReadBytes": 0,
+          "WriteBytes": 170,
+          "OtherBytes": 134,
+          "DesktopIdleSecondsFirst": 17.453,
+          "DesktopIdleSecondsLast": 0.0
+        },
+        {
+          "Label": "optimized",
+          "SampleCount": 65,
+          "MeasuredSeconds": 63.955223,
+          "WorkingSetMeanBytes": 13816879.26,
+          "WorkingSetMedianBytes": 13819904,
+          "WorkingSetP95Bytes": 13824000,
+          "WorkingSetMinBytes": 13795328,
+          "WorkingSetMaxBytes": 13824000,
+          "PrivateMeanBytes": 2190603.82,
+          "PrivateMedianBytes": 2195456,
+          "PrivateP95Bytes": 2207744,
+          "PrivateMinBytes": 2162688,
+          "PrivateMaxBytes": 2207744,
+          "CpuMilliseconds": 0.0,
+          "CpuCyclesDelta": 10200564,
+          "CpuPercentOneCore": 0.0,
+          "CpuPercentMachine": 0.0,
+          "ThreadsMin": 7.0,
+          "ThreadsMax": 9.0,
+          "HandlesMin": 233.0,
+          "HandlesMax": 235.0,
+          "ReadOperations": 0,
+          "WriteOperations": 4,
+          "OtherOperations": 51,
+          "ReadBytes": 0,
+          "WriteBytes": 170,
+          "OtherBytes": 134,
+          "DesktopIdleSecondsFirst": 17.453,
+          "DesktopIdleSecondsLast": 0.0
+        }
+      ],
+      "shutdown": [
+        {
+          "Label": "before",
+          "Pid": 115540,
+          "ExitCode": 0,
+          "ForcedTermination": false,
+          "StopCommandExitCode": 0,
+          "StopCommandStdout": "Stop signal sent.",
+          "StopCommandStderr": "",
+          "CleanupError": null
+        },
+        {
+          "Label": "optimized",
+          "Pid": 75756,
+          "ExitCode": 0,
+          "ForcedTermination": false,
+          "StopCommandExitCode": 0,
+          "StopCommandStdout": "Stop signal sent.",
+          "StopCommandStderr": "",
+          "CleanupError": null
+        }
+      ],
+      "instances": [
+        {
+          "label": "before",
+          "apps_dictionary_bytes": 64
+        },
+        {
+          "label": "optimized",
+          "apps_dictionary_bytes": 64
+        }
+      ],
+      "daemon_stderr_empty": true
+    },
+    {
+      "source": "target\\perf-review-20260905\\desktop\\20260905T082826697Z-474bca56-titles\\resources.json",
+      "scenario": "Titles",
+      "desktop": {
+        "ForegroundAvailable": true,
+        "ShellAvailable": true
+      },
+      "summary": [
+        {
+          "Label": "before",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.015585,
+          "WorkingSetMeanBytes": 13310991.75,
+          "WorkingSetMedianBytes": 13320192,
+          "WorkingSetP95Bytes": 13336576,
+          "WorkingSetMinBytes": 13250560,
+          "WorkingSetMaxBytes": 13336576,
+          "PrivateMeanBytes": 2175732.18,
+          "PrivateMedianBytes": 2166784,
+          "PrivateP95Bytes": 2191360,
+          "PrivateMinBytes": 2109440,
+          "PrivateMaxBytes": 2191360,
+          "CpuMilliseconds": 218.75,
+          "CpuCyclesDelta": 724031109,
+          "CpuPercentOneCore": 0.3417136623839335,
+          "CpuPercentMachine": 0.010678551949497923,
+          "ThreadsMin": 6.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 233.0,
+          "HandlesMax": 235.0,
+          "ReadOperations": 0,
+          "WriteOperations": 5,
+          "OtherOperations": 54,
+          "ReadBytes": 0,
+          "WriteBytes": 191,
+          "OtherBytes": 134,
+          "DesktopIdleSecondsFirst": 0.0,
+          "DesktopIdleSecondsLast": 0.016
+        },
+        {
+          "Label": "optimized",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.014641,
+          "WorkingSetMeanBytes": 13316348.06,
+          "WorkingSetMedianBytes": 13316096,
+          "WorkingSetP95Bytes": 13336576,
+          "WorkingSetMinBytes": 13295616,
+          "WorkingSetMaxBytes": 13336576,
+          "PrivateMeanBytes": 2178441.85,
+          "PrivateMedianBytes": 2179072,
+          "PrivateP95Bytes": 2187264,
+          "PrivateMinBytes": 2150400,
+          "PrivateMaxBytes": 2187264,
+          "CpuMilliseconds": 281.25,
+          "CpuCyclesDelta": 758142336,
+          "CpuPercentOneCore": 0.4393526162241541,
+          "CpuPercentMachine": 0.013729769257004816,
+          "ThreadsMin": 7.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 233.0,
+          "HandlesMax": 235.0,
+          "ReadOperations": 0,
+          "WriteOperations": 5,
+          "OtherOperations": 54,
+          "ReadBytes": 0,
+          "WriteBytes": 191,
+          "OtherBytes": 134,
+          "DesktopIdleSecondsFirst": 0.0,
+          "DesktopIdleSecondsLast": 0.016
+        }
+      ],
+      "shutdown": [
+        {
+          "Label": "before",
+          "Pid": 45216,
+          "ExitCode": 0,
+          "ForcedTermination": false,
+          "StopCommandExitCode": 0,
+          "StopCommandStdout": "Stop signal sent.",
+          "StopCommandStderr": "",
+          "CleanupError": null
+        },
+        {
+          "Label": "optimized",
+          "Pid": 40216,
+          "ExitCode": 0,
+          "ForcedTermination": false,
+          "StopCommandExitCode": 0,
+          "StopCommandStdout": "Stop signal sent.",
+          "StopCommandStderr": "",
+          "CleanupError": null
+        }
+      ],
+      "instances": [
+        {
+          "label": "before",
+          "apps_dictionary_bytes": 64
+        },
+        {
+          "label": "optimized",
+          "apps_dictionary_bytes": 64
+        }
+      ],
+      "daemon_stderr_empty": true
+    },
+    {
+      "source": "target\\perf-review-20260905\\desktop\\20260905T082936033Z-94c8e2de-default\\resources.json",
+      "scenario": "Default",
+      "desktop": {
+        "ForegroundAvailable": true,
+        "ShellAvailable": true
+      },
+      "summary": [
+        {
+          "Label": "before",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.003185,
+          "WorkingSetMeanBytes": 13340608.98,
+          "WorkingSetMedianBytes": 13336576,
+          "WorkingSetP95Bytes": 13357056,
+          "WorkingSetMinBytes": 13291520,
+          "WorkingSetMaxBytes": 13357056,
+          "PrivateMeanBytes": 2198921.85,
+          "PrivateMedianBytes": 2199552,
+          "PrivateP95Bytes": 2207744,
+          "PrivateMinBytes": 2174976,
+          "PrivateMaxBytes": 2207744,
+          "CpuMilliseconds": 0.0,
+          "CpuCyclesDelta": 18364194,
+          "CpuPercentOneCore": 0.0,
+          "CpuPercentMachine": 0.0,
+          "ThreadsMin": 7.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 233.0,
+          "HandlesMax": 236.0,
+          "ReadOperations": 0,
+          "WriteOperations": 7,
+          "OtherOperations": 86,
+          "ReadBytes": 0,
+          "WriteBytes": 392,
+          "OtherBytes": 1618,
+          "DesktopIdleSecondsFirst": 0.016,
+          "DesktopIdleSecondsLast": 0.0
+        },
+        {
+          "Label": "optimized",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.002141,
+          "WorkingSetMeanBytes": 13336828.06,
+          "WorkingSetMedianBytes": 13336576,
+          "WorkingSetP95Bytes": 13352960,
+          "WorkingSetMinBytes": 13291520,
+          "WorkingSetMaxBytes": 13352960,
+          "PrivateMeanBytes": 2196716.31,
+          "PrivateMedianBytes": 2191360,
+          "PrivateP95Bytes": 2207744,
+          "PrivateMinBytes": 2179072,
+          "PrivateMaxBytes": 2207744,
+          "CpuMilliseconds": 15.625,
+          "CpuCyclesDelta": 18373432,
+          "CpuPercentOneCore": 0.024413245800636578,
+          "CpuPercentMachine": 0.0007629139312698931,
+          "ThreadsMin": 7.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 233.0,
+          "HandlesMax": 236.0,
+          "ReadOperations": 0,
+          "WriteOperations": 7,
+          "OtherOperations": 86,
+          "ReadBytes": 0,
+          "WriteBytes": 392,
+          "OtherBytes": 1618,
+          "DesktopIdleSecondsFirst": 0.016,
+          "DesktopIdleSecondsLast": 0.0
+        }
+      ],
+      "shutdown": [
+        {
+          "Label": "before",
+          "Pid": 36100,
+          "ExitCode": 0,
+          "ForcedTermination": false,
+          "StopCommandExitCode": 0,
+          "StopCommandStdout": "Stop signal sent.",
+          "StopCommandStderr": "",
+          "CleanupError": null
+        },
+        {
+          "Label": "optimized",
+          "Pid": 112044,
+          "ExitCode": 0,
+          "ForcedTermination": false,
+          "StopCommandExitCode": 0,
+          "StopCommandStdout": "Stop signal sent.",
+          "StopCommandStderr": "",
+          "CleanupError": null
+        }
+      ],
+      "instances": [
+        {
+          "label": "before",
+          "apps_dictionary_bytes": 154
+        },
+        {
+          "label": "optimized",
+          "apps_dictionary_bytes": 154
+        }
+      ],
+      "daemon_stderr_empty": true
+    },
+    {
+      "source": "target\\perf-review-20260905\\desktop\\20260905T083045247Z-111932d8-titles\\resources.json",
+      "scenario": "Titles",
+      "desktop": {
+        "ForegroundAvailable": true,
+        "ShellAvailable": true
+      },
+      "summary": [
+        {
+          "Label": "before",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.011521,
+          "WorkingSetMeanBytes": 13334370.46,
+          "WorkingSetMedianBytes": 13336576,
+          "WorkingSetP95Bytes": 13406208,
+          "WorkingSetMinBytes": 13254656,
+          "WorkingSetMaxBytes": 13406208,
+          "PrivateMeanBytes": 2183924.18,
+          "PrivateMedianBytes": 2179072,
+          "PrivateP95Bytes": 2195456,
+          "PrivateMinBytes": 2113536,
+          "PrivateMaxBytes": 2199552,
+          "CpuMilliseconds": 296.875,
+          "CpuCyclesDelta": 842215041,
+          "CpuPercentOneCore": 0.46378369918752593,
+          "CpuPercentMachine": 0.014493240599610185,
+          "ThreadsMin": 6.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 233.0,
+          "HandlesMax": 237.0,
+          "ReadOperations": 0,
+          "WriteOperations": 11,
+          "OtherOperations": 132,
+          "ReadBytes": 0,
+          "WriteBytes": 567,
+          "OtherBytes": 3426,
+          "DesktopIdleSecondsFirst": 0.0,
+          "DesktopIdleSecondsLast": 0.079
+        },
+        {
+          "Label": "optimized",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.01599900000001,
+          "WorkingSetMeanBytes": 13350628.43,
+          "WorkingSetMedianBytes": 13357056,
+          "WorkingSetP95Bytes": 13414400,
+          "WorkingSetMinBytes": 13271040,
+          "WorkingSetMaxBytes": 13414400,
+          "PrivateMeanBytes": 2196779.32,
+          "PrivateMedianBytes": 2195456,
+          "PrivateP95Bytes": 2207744,
+          "PrivateMinBytes": 2129920,
+          "PrivateMaxBytes": 2207744,
+          "CpuMilliseconds": 312.5,
+          "CpuCyclesDelta": 886257867,
+          "CpuPercentOneCore": 0.48815921782303195,
+          "CpuPercentMachine": 0.015254975556969749,
+          "ThreadsMin": 6.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 233.0,
+          "HandlesMax": 237.0,
+          "ReadOperations": 0,
+          "WriteOperations": 11,
+          "OtherOperations": 132,
+          "ReadBytes": 0,
+          "WriteBytes": 567,
+          "OtherBytes": 3426,
+          "DesktopIdleSecondsFirst": 0.0,
+          "DesktopIdleSecondsLast": 0.079
+        }
+      ],
+      "shutdown": [
+        {
+          "Label": "before",
+          "Pid": 14024,
+          "ExitCode": 0,
+          "ForcedTermination": false,
+          "StopCommandExitCode": 0,
+          "StopCommandStdout": "Stop signal sent.",
+          "StopCommandStderr": "",
+          "CleanupError": null
+        },
+        {
+          "Label": "optimized",
+          "Pid": 96100,
+          "ExitCode": 0,
+          "ForcedTermination": false,
+          "StopCommandExitCode": 0,
+          "StopCommandStdout": "Stop signal sent.",
+          "StopCommandStderr": "",
+          "CleanupError": null
+        }
+      ],
+      "instances": [
+        {
+          "label": "before",
+          "apps_dictionary_bytes": 261
+        },
+        {
+          "label": "optimized",
+          "apps_dictionary_bytes": 261
+        }
+      ],
+      "daemon_stderr_empty": true
+    }
+  ],
+  "validation": {
+    "debug_tests_passed": 119,
+    "release_tests_passed": 119,
+    "clippy_warnings_denied": true,
+    "changed_rustfmt_passed": true,
+    "git_diff_check_passed": true,
+    "desktop_graceful_exits": 8,
+    "forced_terminations": 0,
+    "original_dictionary_regression_fails": true
+  }
+}

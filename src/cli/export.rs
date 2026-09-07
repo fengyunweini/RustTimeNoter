@@ -14,7 +14,7 @@ use crate::cli::report::{fmt_date, parse_date};
 use crate::local_time::{Calendar, SystemCalendar};
 use crate::paths::AppPaths;
 use crate::storage::crypto::{load_or_create_master_key, Cipher};
-use crate::storage::dict::Dict;
+use crate::storage::dict::DictReader;
 use crate::storage::query::{validate_local_date_range, visit_local_date_range};
 use crate::storage::writer::now_unix;
 
@@ -40,9 +40,11 @@ struct Row<'a> {
     title: Option<&'a str>,
     category: Option<&'a str>,
     start_timestamp: String,
+    record_type: &'static str,
 }
 
-const CSV_HEADER: &str = "date,start_time,duration_secs,app_path,title,category,start_timestamp";
+const CSV_HEADER: &str =
+    "date,start_time,duration_secs,app_path,title,category,start_timestamp,record_type";
 const TEMP_FILE_PREFIX: &str = ".rusttimenoter-export-";
 const TEMP_FILE_ATTEMPTS: usize = 128;
 
@@ -116,8 +118,8 @@ pub fn run(args: ExportArgs, paths: &AppPaths, machine_scope: bool) -> std::io::
 
     let key = load_or_create_master_key(&paths.key_file, machine_scope)?;
     let cipher = Cipher::new(&key);
-    let apps = Dict::open(&paths.apps_dict)?;
-    let titles = Dict::open(&paths.titles_dict)?;
+    let mut apps = DictReader::open(&paths.apps_dict)?;
+    let mut titles = DictReader::open(&paths.titles_dict)?;
     let classifier = Classifier::load(&paths.rules_file)?;
 
     let format = args.format;
@@ -129,20 +131,29 @@ pub fn run(args: ExportArgs, paths: &AppPaths, machine_scope: bool) -> std::io::
             write!(out, "[")?;
         }
 
-        visit_local_date_range(paths, &cipher, &calendar, from, to, |r| {
-            let exe = apps.get(r.app_id).unwrap_or("?");
-            let title = if r.title_id == 0 {
+        let quality = visit_local_date_range(paths, &cipher, &calendar, from, to, |r| {
+            let record_type = if r.is_gap() { "gap" } else { "activity" };
+            let exe = if r.is_gap() {
+                ""
+            } else {
+                apps.resolve(r.app_id)?
+            };
+            let title = if r.is_gap() || r.title_id == 0 {
                 None
             } else {
-                titles.get(r.title_id)
+                Some(titles.resolve(r.title_id)?)
             };
-            let category = classifier.classify(exe, title);
+            let category = if r.is_gap() {
+                None
+            } else {
+                classifier.classify(exe, title)
+            };
             let (start_time, start_timestamp) = calendar.format_time_and_rfc3339(r.start_unix)?;
             match format {
                 Format::Csv => {
                     writeln!(
                         out,
-                        "{},{},{},{},{},{},{}",
+                        "{},{},{},{},{},{},{},{}",
                         fmt_date(r.local_date),
                         start_time,
                         r.duration_secs,
@@ -150,6 +161,7 @@ pub fn run(args: ExportArgs, paths: &AppPaths, machine_scope: bool) -> std::io::
                         csv_escape(title.unwrap_or("")),
                         csv_escape(category.unwrap_or("")),
                         start_timestamp,
+                        record_type,
                     )?;
                 }
                 Format::Json => {
@@ -165,12 +177,16 @@ pub fn run(args: ExportArgs, paths: &AppPaths, machine_scope: bool) -> std::io::
                         title,
                         category,
                         start_timestamp,
+                        record_type,
                     };
                     serde_json::to_writer(&mut *out, &row)?;
                 }
             }
             Ok(())
         })?;
+        if let Some(warning) = quality.warning() {
+            eprintln!("{warning}");
+        }
 
         if matches!(format, Format::Json) {
             write!(out, "]")?;
@@ -294,7 +310,7 @@ impl Drop for PendingOutput {
 }
 
 fn csv_escape(s: &str) -> String {
-    if s.contains(',') || s.contains('"') || s.contains('\n') {
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
         format!("\"{}\"", s.replace('"', "\"\""))
     } else {
         s.to_string()
@@ -306,12 +322,26 @@ mod tests {
     use chrono::{Days, NaiveDate};
 
     use crate::local_time::{Calendar, SystemCalendar, TestCalendar};
+    use crate::storage::dict::Dict;
     use crate::storage::log::LogWriter;
     use crate::storage::model::Record;
     use crate::storage::query::MAX_QUERY_DAYS;
     use crate::storage::writer::{unix_to_utc_date, utc_midnight_unix};
 
     use super::*;
+
+    #[test]
+    fn csv_quotes_carriage_returns_line_feeds_and_embedded_quotes() {
+        for newline in ["\r", "\n", "\r\n"] {
+            assert_eq!(
+                csv_escape(&format!("a{newline}b")),
+                format!("\"a{newline}b\"")
+            );
+        }
+        assert_eq!(csv_escape("a\r\"b"), "\"a\r\"\"b\"");
+        assert_eq!(csv_escape("plain title"), "plain title");
+        assert_eq!(csv_escape(""), "");
+    }
 
     fn args(format: Format, out: PathBuf, from: NaiveDate, to: NaiveDate) -> ExportArgs {
         ExportArgs {
@@ -349,8 +379,9 @@ mod tests {
                 "category",
             ]
         );
-        assert_eq!(columns.len(), 7);
-        assert_eq!(columns.last(), Some(&"start_timestamp"));
+        assert_eq!(columns.len(), 8);
+        assert_eq!(columns[6], "start_timestamp");
+        assert_eq!(columns.last(), Some(&"record_type"));
     }
 
     #[test]
@@ -365,11 +396,12 @@ mod tests {
             title: Some("notes"),
             category: Some("work"),
             start_timestamp,
+            record_type: "activity",
         };
 
         assert_eq!(
             serde_json::to_string(&row).unwrap(),
-            r#"{"date":"1970-01-01","start_time":"08:00:00","duration_secs":42,"app_path":"C:\\Apps\\editor.exe","title":"notes","category":"work","start_timestamp":"1970-01-01T08:00:00+08:00"}"#
+            r#"{"date":"1970-01-01","start_time":"08:00:00","duration_secs":42,"app_path":"C:\\Apps\\editor.exe","title":"notes","category":"work","start_timestamp":"1970-01-01T08:00:00+08:00","record_type":"activity"}"#
         );
     }
 
@@ -408,6 +440,10 @@ mod tests {
         std::fs::write(&output, b"keep this export").unwrap();
 
         let key = load_or_create_master_key(&paths.key_file, false).unwrap();
+        Dict::open_writer(&paths.apps_dict)
+            .unwrap()
+            .intern("first.exe")
+            .unwrap();
         let cipher = Cipher::new(&key);
         let calendar = SystemCalendar::new();
         let from = calendar.today_at(now_unix()).unwrap();
@@ -450,6 +486,48 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
         assert_eq!(std::fs::read(&output).unwrap(), b"keep this export");
         assert_no_pending_exports(sandbox.path());
+    }
+
+    #[test]
+    fn missing_app_or_title_reference_preserves_existing_export() {
+        for missing_title in [false, true] {
+            let sandbox = tempfile::tempdir().unwrap();
+            let paths = AppPaths::from_root(&sandbox.path().join("state"));
+            let output = sandbox.path().join("existing.json");
+            std::fs::write(&output, b"keep this export").unwrap();
+            let key = load_or_create_master_key(&paths.key_file, false).unwrap();
+            let app_id = Dict::open_writer(&paths.apps_dict)
+                .unwrap()
+                .intern("known.exe")
+                .unwrap();
+            let calendar = SystemCalendar::new();
+            let start = now_unix();
+            let date = calendar.today_at(start).unwrap();
+            let shard_date = unix_to_utc_date(start);
+            let log_path =
+                paths.log_file_for_day(shard_date.year, shard_date.month, shard_date.day);
+            LogWriter::open(&log_path, Cipher::new(&key), shard_date)
+                .unwrap()
+                .write_block(&[Record {
+                    start_offset_secs: (start - utc_midnight_unix(shard_date)) as u32,
+                    duration_secs: 1,
+                    app_id: if missing_title { app_id } else { app_id + 1 },
+                    title_id: u32::from(missing_title),
+                    flags: 0,
+                }])
+                .unwrap();
+
+            let error = run(
+                args(Format::Json, output.clone(), date, date),
+                &paths,
+                false,
+            )
+            .unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            assert!(error.to_string().contains("missing dictionary id"));
+            assert_eq!(std::fs::read(&output).unwrap(), b"keep this export");
+            assert_no_pending_exports(sandbox.path());
+        }
     }
 
     #[test]
