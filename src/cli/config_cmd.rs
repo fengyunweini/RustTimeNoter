@@ -39,7 +39,10 @@ pub fn parse(p: &mut lexopt::Parser) -> Result<ConfigArgs, lexopt::Error> {
     let mut positional: Vec<String> = Vec::new();
     while let Some(arg) = p.next()? {
         match arg {
-            Short('h') | Long("help") => { print!("{CFG_HELP}"); std::process::exit(0); }
+            Short('h') | Long("help") => {
+                print!("{CFG_HELP}");
+                std::process::exit(0);
+            }
             Value(v) => {
                 if sub.is_none() {
                     sub = Some(v.to_string_lossy().into_owned());
@@ -50,25 +53,51 @@ pub fn parse(p: &mut lexopt::Parser) -> Result<ConfigArgs, lexopt::Error> {
             _ => return Err(arg.unexpected()),
         }
     }
-    let sub = sub.ok_or(lexopt::Error::MissingValue { option: Some("config <SUBCOMMAND>".into()) })?;
+    let sub = sub.ok_or(lexopt::Error::MissingValue {
+        option: Some("config <SUBCOMMAND>".into()),
+    })?;
     let cmd = match sub.as_str() {
         "show" => ConfigCmd::Show,
         "init" => ConfigCmd::Init,
         "path" => ConfigCmd::Path,
         "set" => {
-            let key = positional.first().cloned()
-                .ok_or(lexopt::Error::MissingValue { option: Some("KEY".into()) })?;
-            let value = positional.get(1).cloned()
-                .ok_or(lexopt::Error::MissingValue { option: Some("VALUE".into()) })?;
+            let key = positional
+                .first()
+                .cloned()
+                .ok_or(lexopt::Error::MissingValue {
+                    option: Some("KEY".into()),
+                })?;
+            let value = positional
+                .get(1)
+                .cloned()
+                .ok_or(lexopt::Error::MissingValue {
+                    option: Some("VALUE".into()),
+                })?;
             ConfigCmd::Set { key, value }
         }
         "get" => {
-            let key = positional.first().cloned()
-                .ok_or(lexopt::Error::MissingValue { option: Some("KEY".into()) })?;
+            let key = positional
+                .first()
+                .cloned()
+                .ok_or(lexopt::Error::MissingValue {
+                    option: Some("KEY".into()),
+                })?;
             ConfigCmd::Get { key }
         }
-        other => return Err(lexopt::Error::UnexpectedArgument(format!("unknown config subcommand: {other}").into())),
+        other => {
+            return Err(lexopt::Error::UnexpectedArgument(
+                format!("unknown config subcommand: {other}").into(),
+            ))
+        }
     };
+    let expected = match &cmd {
+        ConfigCmd::Show | ConfigCmd::Init | ConfigCmd::Path => 0,
+        ConfigCmd::Get { .. } => 1,
+        ConfigCmd::Set { .. } => 2,
+    };
+    if let Some(extra) = positional.get(expected) {
+        return Err(lexopt::Error::UnexpectedArgument(extra.into()));
+    }
     Ok(ConfigArgs { cmd })
 }
 
@@ -108,8 +137,11 @@ fn apply_set(cfg: &mut Config, key: &str, value: &str) -> std::io::Result<()> {
         "idle_tick_secs" => cfg.idle_tick_secs = value.parse().map_err(pe)?,
         "title_max_chars" => cfg.title_max_chars = value.parse().map_err(pe)?,
         "title_blacklist" => {
-            cfg.title_blacklist =
-                value.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+            cfg.title_blacklist = value
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
         }
         other => {
             return Err(std::io::Error::new(
@@ -134,5 +166,41 @@ fn read_key(cfg: &Config, key: &str) -> std::io::Result<String> {
             std::io::ErrorKind::InvalidInput,
             format!("unknown config key: {other}"),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_subcommands_reject_extra_positionals() {
+        for args in [
+            vec!["show", "extra"],
+            vec!["init", "extra"],
+            vec!["path", "extra"],
+            vec!["get", "capture_titles", "extra"],
+            vec!["set", "capture_titles", "true", "extra"],
+        ] {
+            assert!(
+                parse(&mut lexopt::Parser::from_args(args.iter().copied())).is_err(),
+                "accepted {args:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn config_subcommands_keep_their_valid_arities() {
+        for args in [
+            vec!["show"],
+            vec!["init"],
+            vec!["path"],
+            vec!["get", "capture_titles"],
+            vec!["set", "capture_titles", "true"],
+        ] {
+            assert!(parse(&mut lexopt::Parser::from_args(args)).is_ok());
+        }
+        assert!(parse(&mut lexopt::Parser::from_args(["get"])).is_err());
+        assert!(parse(&mut lexopt::Parser::from_args(["set", "capture_titles"])).is_err());
     }
 }

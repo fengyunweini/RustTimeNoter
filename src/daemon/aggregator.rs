@@ -102,6 +102,9 @@ struct Active {
 pub struct Aggregator {
     afk_millis: u64,
     active: Option<Active>,
+    // Input belongs to the session, not to one resolved foreground segment.
+    // A gap/reset must not make a later regressing OS sample erase evidence.
+    input_seen: Option<MonoTime>,
     locked: bool,
     suspended: bool,
 }
@@ -111,6 +114,7 @@ impl Aggregator {
         Self {
             afk_millis: afk_threshold_secs.max(1).saturating_mul(1_000),
             active: None,
+            input_seen: None,
             locked: false,
             suspended: false,
         }
@@ -151,11 +155,13 @@ impl Aggregator {
     /// confirmed input still proves activity through its original deadline;
     /// reusing it here does not refresh or extend that deadline.
     pub fn confirmed_input(&self, at: TimePoint) -> Option<MonoTime> {
-        self.active.as_ref().and_then(|active| {
-            (active.last_input <= at.monotonic
-                && at.monotonic.elapsed_millis_since(active.last_input) <= self.afk_millis)
-                .then_some(active.last_input)
+        self.input_seen.filter(|input| {
+            *input <= at.monotonic && at.monotonic.elapsed_millis_since(*input) <= self.afk_millis
         })
+    }
+
+    pub(crate) fn input_seen(&self) -> Option<MonoTime> {
+        self.input_seen
     }
 
     pub fn confirmed_through(&self) -> Option<MonoTime> {
@@ -165,7 +171,7 @@ impl Aggregator {
     }
 
     /// GetLastInputInfo can return a timestamp older than a previous reading.
-    /// Retain a causal input already witnessed by this active segment without
+    /// Retain a causal input already witnessed by this session without
     /// refreshing its deadline or hiding a failed/future observation.
     pub(crate) fn monotonic_input(
         &self,
@@ -175,11 +181,17 @@ impl Aggregator {
         observed
             .filter(|input| *input <= at.monotonic)
             .map(|input| {
-                self.active
-                    .as_ref()
-                    .filter(|active| active.last_input <= at.monotonic)
-                    .map_or(input, |active| input.max(active.last_input))
+                self.input_seen
+                    .filter(|seen| *seen <= at.monotonic)
+                    .map_or(input, |seen| input.max(seen))
             })
+    }
+
+    /// Remember causal input without attributing activity to any window.
+    pub(crate) fn remember_input(&mut self, at: TimePoint, input: MonoTime) {
+        if input <= at.monotonic {
+            self.input_seen = Some(self.input_seen.map_or(input, |seen| seen.max(input)));
+        }
     }
 
     /// Only a causal OS input observation changes the idle deadline.
@@ -187,6 +199,7 @@ impl Aggregator {
         let Some(last_input) = self.monotonic_input(at, Some(last_input)) else {
             return Vec::new();
         };
+        self.remember_input(at, last_input);
         let Some(active) = self.active.as_mut() else {
             return Vec::new();
         };

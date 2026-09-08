@@ -204,6 +204,9 @@ impl Dict {
             cursor += len as u64;
             let value = String::from_utf8(bytes)
                 .map_err(|_| invalid_data("dict: invalid UTF-8; original preserved"))?;
+            if value.contains('\0') {
+                return Err(invalid_data("dict: entry contains NUL; original preserved"));
+            }
             if self.by_string.contains_key(value.as_str()) {
                 return Err(invalid_data("dict: duplicate string; original preserved"));
             }
@@ -544,6 +547,32 @@ mod tests {
         }
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
+
+    #[test]
+    fn complete_nul_entry_is_rejected_without_changing_the_dictionary() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.dict");
+        let mut bytes = HEADER.to_vec();
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        bytes.extend_from_slice(&3u32.to_le_bytes());
+        bytes.extend_from_slice(b"a\0b");
+        std::fs::write(&path, &bytes).unwrap();
+
+        for writable in [false, true] {
+            let opened = if writable {
+                Dict::open_writer_checked(&path, 1)
+            } else {
+                Dict::open(&path)
+            };
+            let error = opened
+                .err()
+                .expect("a complete NUL entry cannot be valid dictionary text");
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+        }
+    }
+
     #[test]
     fn failed_append_cannot_be_acknowledged_or_retried_in_memory() {
         let dir = tempfile::tempdir().unwrap();

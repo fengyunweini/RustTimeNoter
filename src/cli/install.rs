@@ -58,6 +58,9 @@ fn parse_mode(p: &mut lexopt::Parser) -> Result<Mode, lexopt::Error> {
                 std::process::exit(0);
             }
             Value(v) => {
+                if mode.is_some() {
+                    return Err(lexopt::Error::UnexpectedArgument(v));
+                }
                 let s = v.to_string_lossy().into_owned();
                 mode = Some(match s.as_str() {
                     "autostart" => Mode::Autostart,
@@ -251,7 +254,7 @@ fn install_service() -> std::io::Result<()> {
 
 fn uninstall_service() -> std::io::Result<()> {
     use windows_service::{
-        service::{ServiceAccess, ServiceState},
+        service::ServiceAccess,
         service_manager::{ServiceManager, ServiceManagerAccess},
     };
 
@@ -264,16 +267,48 @@ fn uninstall_service() -> std::io::Result<()> {
         )
         .map_err(svc_io_err)?;
 
-    if svc.query_status().map_err(svc_io_err)?.current_state != ServiceState::Stopped {
-        let _ = svc.stop();
-    }
-    svc.delete().map_err(svc_io_err)?;
+    uninstall_service_with(
+        || {
+            svc.query_status()
+                .map(|status| status.current_state)
+                .map_err(svc_io_err)
+        },
+        || svc.stop().map(|_| ()).map_err(svc_io_err),
+        || svc.delete().map_err(svc_io_err),
+    )?;
     println!("Removed service '{SERVICE_NAME}'.");
     Ok(())
 }
 
+fn uninstall_service_with(
+    mut query_state: impl FnMut() -> std::io::Result<windows_service::service::ServiceState>,
+    stop: impl FnOnce() -> std::io::Result<()>,
+    delete: impl FnOnce() -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    if query_state()? == windows_service::service::ServiceState::Stopped {
+        return delete();
+    }
+    // The service may have stopped between the query and Stop. Only a fresh
+    // confirmation permits deletion after that failed request. A failed
+    // recheck must not replace the original Stop error.
+    match stop() {
+        Err(error)
+            if !matches!(
+                query_state(),
+                Ok(windows_service::service::ServiceState::Stopped)
+            ) =>
+        {
+            Err(error)
+        }
+        _ => delete(),
+    }
+}
+
 fn svc_io_err(e: windows_service::Error) -> std::io::Error {
-    std::io::Error::other(e.to_string())
+    match e {
+        windows_service::Error::Winapi(error) => error,
+        other => std::io::Error::other(other.to_string()),
+    }
 }
 
 /// Append a single line to %ProgramData%\RustTimeNoter\service-trace.log.
@@ -415,6 +450,105 @@ mod service_tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
     use windows_service::service::ServiceExitCode;
+
+    #[test]
+    fn install_and_uninstall_reject_more_than_one_mode() {
+        for modes in [["autostart", "service"], ["service", "service"]] {
+            assert!(parse_install(&mut lexopt::Parser::from_args(modes)).is_err());
+            assert!(parse_uninstall(&mut lexopt::Parser::from_args(modes)).is_err());
+        }
+    }
+
+    #[test]
+    fn uninstall_preserves_stop_failure_without_deleting_a_running_service() {
+        use std::cell::Cell;
+        use windows_service::service::ServiceState;
+
+        for state in [ServiceState::Running, ServiceState::StartPending] {
+            let deleted = Cell::new(false);
+            let error = uninstall_service_with(
+                || Ok(state),
+                || Err(std::io::Error::from_raw_os_error(1061)),
+                || {
+                    deleted.set(true);
+                    Ok(())
+                },
+            )
+            .unwrap_err();
+            assert_eq!(error.raw_os_error(), Some(1061));
+            assert!(!deleted.get());
+        }
+    }
+
+    #[test]
+    fn uninstall_rechecks_a_concurrent_stop_before_allowing_deletion() {
+        use std::cell::Cell;
+        use windows_service::service::ServiceState;
+
+        let queries = Cell::new(0);
+        let deleted = Cell::new(false);
+        uninstall_service_with(
+            || {
+                queries.set(queries.get() + 1);
+                Ok(if queries.get() == 1 {
+                    ServiceState::Running
+                } else {
+                    ServiceState::Stopped
+                })
+            },
+            || Err(std::io::Error::from_raw_os_error(1062)),
+            || {
+                assert_eq!(queries.get(), 2, "deletion needs a fresh stopped state");
+                deleted.set(true);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert!(deleted.get());
+    }
+
+    #[test]
+    fn uninstall_keeps_original_stop_error_when_the_recheck_fails() {
+        use std::cell::Cell;
+        use windows_service::service::ServiceState;
+
+        let queries = Cell::new(0);
+        let error = uninstall_service_with(
+            || {
+                queries.set(queries.get() + 1);
+                if queries.get() == 1 {
+                    Ok(ServiceState::Running)
+                } else {
+                    Err(std::io::Error::from_raw_os_error(5))
+                }
+            },
+            || Err(std::io::Error::from_raw_os_error(1061)),
+            || Ok(()),
+        )
+        .unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(1061));
+    }
+
+    #[test]
+    fn uninstall_stopped_service_skips_stop_and_preserves_delete_failure() {
+        use windows_service::service::ServiceState;
+
+        let error = uninstall_service_with(
+            || Ok(ServiceState::Stopped),
+            || panic!("already stopped service must not receive Stop"),
+            || Err(std::io::Error::from_raw_os_error(5)),
+        )
+        .unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(5));
+    }
+
+    #[test]
+    fn service_api_errors_retain_the_original_win32_code() {
+        let error = svc_io_err(windows_service::Error::Winapi(
+            std::io::Error::from_raw_os_error(1061),
+        ));
+        assert_eq!(error.raw_os_error(), Some(1061));
+    }
 
     #[test]
     fn stop_before_worker_event_exists_is_retained_before_failed_wake() {

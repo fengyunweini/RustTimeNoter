@@ -108,7 +108,8 @@ tracker uninstall service
 2026-09-07 在 Ryzen 9 7945HX、Windows build 26200、Rust 1.97.1 上测量，x64 release + LTO。
 真实桌面与托盘，每组预热 5 秒、测量 64 秒，默认和标题配置各重复两轮，没有修剪工作集。
 这些是 9 月 7 日快照（`8dc6c54`）的本机样本，不是所有机器的资源保证。
-后续[延迟标题归属修复及验证](docs/title-review.md)另列计时复测。详见[9 月 7 日复查与配对结果](docs/pr-review.md)、
+后续[延迟标题归属修复及验证](docs/title-review.md)另列计时复测；最新[独立自查](docs/self-review.md)记录进一步修复及相对 `2d421dd` 的配对数据。
+详见[9 月 7 日复查与配对结果](docs/pr-review.md)、
 [9 月 5 日第二轮复查](docs/performance-review.md)及[第一轮优化](docs/performance.md)。
 
 | 指标 | 9 月 7 日快照（`8dc6c54`） |

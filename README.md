@@ -114,6 +114,7 @@ x64 release with LTO. Real desktop and tray, five-second warmup, two 64-second
 runs per setting; no working-set trimming. These are local measurements, not a
 universal resource guarantee. These figures describe the September 7 snapshot (`8dc6c54`).
 The subsequent [delayed-title correction and validation](docs/title-review.md) has its own replay measurements.
+The latest [independent review](docs/self-review.md) records further fixes and paired measurements against `2d421dd`.
 See the [September 7 review and paired comparison](docs/pr-review.md),
 [September 5 second review](docs/performance-review.md) and [first optimization results](docs/performance.md).
 
