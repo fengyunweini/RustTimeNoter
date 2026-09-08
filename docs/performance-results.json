@@ -1,0 +1,1202 @@
+{
+  "date": "2026-09-05",
+  "master_commit": "7c074ef56e3ce10297fd2d6e2b4f369058b02c11",
+  "environment": {
+    "cpu": "AMD Ryzen 9 7945HX",
+    "logical_processors": 32,
+    "windows_build": 26200,
+    "rustc": "1.97.1",
+    "build": "release, opt-level=z, fat LTO, x64 MSVC, stripped"
+  },
+  "accounting": [
+    {
+      "workload": "samples_30s",
+      "events": 100000,
+      "trials": 14,
+      "before_ns_per_observation": 508.9325,
+      "after_ns_per_observation": 414.6505,
+      "time_reduction_pct": 18.53,
+      "before_allocations": 899999,
+      "after_allocations": 699997,
+      "before_peak_extra_live_bytes": 1412,
+      "after_peak_extra_live_bytes": 1347,
+      "output_digest_equal": true
+    },
+    {
+      "workload": "foreground_every_2s",
+      "events": 100000,
+      "trials": 14,
+      "before_ns_per_observation": 517.4305,
+      "after_ns_per_observation": 366.8685,
+      "time_reduction_pct": 29.1,
+      "before_allocations": 953336,
+      "after_allocations": 580000,
+      "before_peak_extra_live_bytes": 1486,
+      "after_peak_extra_live_bytes": 1356,
+      "output_digest_equal": true
+    },
+    {
+      "workload": "titles_4_per_second",
+      "events": 100000,
+      "trials": 14,
+      "before_ns_per_observation": 558.734,
+      "after_ns_per_observation": 392.8495,
+      "time_reduction_pct": 29.69,
+      "before_allocations": 774166,
+      "after_allocations": 401665,
+      "before_peak_extra_live_bytes": 4740,
+      "after_peak_extra_live_bytes": 4366,
+      "output_digest_equal": true
+    },
+    {
+      "workload": "burst_400_per_second_ordered",
+      "events": 100000,
+      "trials": 14,
+      "before_ns_per_observation": 1340.201,
+      "after_ns_per_observation": 238.7435,
+      "time_reduction_pct": 82.19,
+      "before_allocations": 401256,
+      "after_allocations": 201254,
+      "before_peak_extra_live_bytes": 168802,
+      "after_peak_extra_live_bytes": 168734,
+      "output_digest_equal": true
+    },
+    {
+      "workload": "burst_400_per_second_reordered",
+      "events": 100000,
+      "trials": 14,
+      "before_ns_per_observation": 1389.6675,
+      "after_ns_per_observation": 349.454,
+      "time_reduction_pct": 74.85,
+      "before_allocations": 401256,
+      "after_allocations": 201254,
+      "before_peak_extra_live_bytes": 168802,
+      "after_peak_extra_live_bytes": 168734,
+      "output_digest_equal": true
+    }
+  ],
+  "storage": [
+    {
+      "scenario": "idle",
+      "statistics": {
+        "elapsed_ms": {
+          "before": 2200.176,
+          "after": 2200.4302,
+          "reduction_percent": -0.01155362116485037
+        },
+        "allocated_bytes": {
+          "before": 1608,
+          "after": 1608,
+          "reduction_percent": 0.0
+        },
+        "allocations": {
+          "before": 3,
+          "after": 3,
+          "reduction_percent": 0.0
+        },
+        "live_heap_bytes_at_ack": {
+          "before": 33816,
+          "after": 33800,
+          "reduction_percent": 0.04731488052992505
+        },
+        "file_bytes": {
+          "before": 278,
+          "after": 278,
+          "reduction_percent": 0.0
+        },
+        "process_cycles": {
+          "before": 411675,
+          "after": 332584,
+          "reduction_percent": 19.211999757089938
+        }
+      },
+      "before_samples": [
+        {
+          "allocated_bytes": 1608,
+          "allocations": 3,
+          "elapsed_ms": 2200.176,
+          "file_bytes": 278,
+          "live_heap_bytes_at_ack": 32792,
+          "process_cycles": 411675,
+          "records": 0,
+          "round": 1,
+          "scenario": "idle"
+        },
+        {
+          "allocated_bytes": 1608,
+          "allocations": 3,
+          "elapsed_ms": 2200.2934999999998,
+          "file_bytes": 278,
+          "live_heap_bytes_at_ack": 33816,
+          "process_cycles": 424649,
+          "records": 0,
+          "round": 2,
+          "scenario": "idle"
+        },
+        {
+          "allocated_bytes": 1608,
+          "allocations": 3,
+          "elapsed_ms": 2200.1375,
+          "file_bytes": 278,
+          "live_heap_bytes_at_ack": 33816,
+          "process_cycles": 409180,
+          "records": 0,
+          "round": 3,
+          "scenario": "idle"
+        }
+      ],
+      "after_samples": [
+        {
+          "allocated_bytes": 1608,
+          "allocations": 3,
+          "elapsed_ms": 2200.2182000000003,
+          "file_bytes": 278,
+          "live_heap_bytes_at_ack": 32776,
+          "process_cycles": 324849,
+          "records": 0,
+          "round": 1,
+          "scenario": "idle"
+        },
+        {
+          "allocated_bytes": 1608,
+          "allocations": 3,
+          "elapsed_ms": 2200.4302,
+          "file_bytes": 278,
+          "live_heap_bytes_at_ack": 33800,
+          "process_cycles": 386975,
+          "records": 0,
+          "round": 2,
+          "scenario": "idle"
+        },
+        {
+          "allocated_bytes": 1608,
+          "allocations": 3,
+          "elapsed_ms": 2200.6654000000003,
+          "file_bytes": 278,
+          "live_heap_bytes_at_ack": 33800,
+          "process_cycles": 332584,
+          "records": 0,
+          "round": 3,
+          "scenario": "idle"
+        }
+      ]
+    },
+    {
+      "scenario": "repeated_titles",
+      "statistics": {
+        "elapsed_ms": {
+          "before": 733.4813,
+          "after": 140.2783,
+          "reduction_percent": 80.87499981253782
+        },
+        "allocated_bytes": {
+          "before": 363764,
+          "after": 121868,
+          "reduction_percent": 66.49805918122739
+        },
+        "allocations": {
+          "before": 810,
+          "after": 430,
+          "reduction_percent": 46.913580246913575
+        },
+        "live_heap_bytes_at_ack": {
+          "before": 87542,
+          "after": 71222,
+          "reduction_percent": 18.642480180941725
+        },
+        "file_bytes": {
+          "before": 89078,
+          "after": 89078,
+          "reduction_percent": 0.0
+        },
+        "process_cycles": {
+          "before": 191453321,
+          "after": 44642280,
+          "reduction_percent": 76.68242067213866
+        }
+      },
+      "before_samples": [
+        {
+          "allocated_bytes": 363764,
+          "allocations": 810,
+          "elapsed_ms": 717.0185,
+          "file_bytes": 89078,
+          "live_heap_bytes_at_ack": 87542,
+          "process_cycles": 164334181,
+          "records": 4000,
+          "round": 1,
+          "scenario": "repeated_titles"
+        },
+        {
+          "allocated_bytes": 363764,
+          "allocations": 810,
+          "elapsed_ms": 779.2473,
+          "file_bytes": 89078,
+          "live_heap_bytes_at_ack": 87542,
+          "process_cycles": 191453321,
+          "records": 4000,
+          "round": 2,
+          "scenario": "repeated_titles"
+        },
+        {
+          "allocated_bytes": 363764,
+          "allocations": 810,
+          "elapsed_ms": 733.4813,
+          "file_bytes": 89078,
+          "live_heap_bytes_at_ack": 87542,
+          "process_cycles": 210120428,
+          "records": 4000,
+          "round": 3,
+          "scenario": "repeated_titles"
+        }
+      ],
+      "after_samples": [
+        {
+          "allocated_bytes": 121868,
+          "allocations": 430,
+          "elapsed_ms": 133.6791,
+          "file_bytes": 89078,
+          "live_heap_bytes_at_ack": 71222,
+          "process_cycles": 36470168,
+          "records": 4000,
+          "round": 1,
+          "scenario": "repeated_titles"
+        },
+        {
+          "allocated_bytes": 121868,
+          "allocations": 430,
+          "elapsed_ms": 140.2783,
+          "file_bytes": 89078,
+          "live_heap_bytes_at_ack": 71222,
+          "process_cycles": 44642280,
+          "records": 4000,
+          "round": 2,
+          "scenario": "repeated_titles"
+        },
+        {
+          "allocated_bytes": 121868,
+          "allocations": 430,
+          "elapsed_ms": 148.1016,
+          "file_bytes": 89078,
+          "live_heap_bytes_at_ack": 71222,
+          "process_cycles": 44699923,
+          "records": 4000,
+          "round": 3,
+          "scenario": "repeated_titles"
+        }
+      ]
+    },
+    {
+      "scenario": "unique_titles",
+      "statistics": {
+        "elapsed_ms": {
+          "before": 16107.533199999998,
+          "after": 283.6155,
+          "reduction_percent": 98.23923690562376
+        },
+        "allocated_bytes": {
+          "before": 3189924,
+          "after": 1849230,
+          "reduction_percent": 42.02902639686713
+        },
+        "allocations": {
+          "before": 16307,
+          "after": 8214,
+          "reduction_percent": 49.62899368369412
+        },
+        "live_heap_bytes_at_ack": {
+          "before": 1548982,
+          "after": 950582,
+          "reduction_percent": 38.63182399795478
+        },
+        "file_bytes": {
+          "before": 673750,
+          "after": 673750,
+          "reduction_percent": 0.0
+        },
+        "process_cycles": {
+          "before": 4295421042,
+          "after": 139423362,
+          "reduction_percent": 96.75413980057512
+        }
+      },
+      "before_samples": [
+        {
+          "allocated_bytes": 3189924,
+          "allocations": 16307,
+          "elapsed_ms": 16107.533199999998,
+          "file_bytes": 673750,
+          "live_heap_bytes_at_ack": 1548982,
+          "process_cycles": 4295421042,
+          "records": 4000,
+          "round": 1,
+          "scenario": "unique_titles"
+        },
+        {
+          "allocated_bytes": 3189924,
+          "allocations": 16307,
+          "elapsed_ms": 16656.4026,
+          "file_bytes": 673750,
+          "live_heap_bytes_at_ack": 1548982,
+          "process_cycles": 4375144897,
+          "records": 4000,
+          "round": 2,
+          "scenario": "unique_titles"
+        },
+        {
+          "allocated_bytes": 3189924,
+          "allocations": 16307,
+          "elapsed_ms": 15829.722600000001,
+          "file_bytes": 673750,
+          "live_heap_bytes_at_ack": 1548982,
+          "process_cycles": 3723166073,
+          "records": 4000,
+          "round": 3,
+          "scenario": "unique_titles"
+        }
+      ],
+      "after_samples": [
+        {
+          "allocated_bytes": 1849230,
+          "allocations": 8214,
+          "elapsed_ms": 274.0995,
+          "file_bytes": 673750,
+          "live_heap_bytes_at_ack": 950582,
+          "process_cycles": 122517475,
+          "records": 4000,
+          "round": 1,
+          "scenario": "unique_titles"
+        },
+        {
+          "allocated_bytes": 1849230,
+          "allocations": 8214,
+          "elapsed_ms": 286.35690000000005,
+          "file_bytes": 673750,
+          "live_heap_bytes_at_ack": 950582,
+          "process_cycles": 139423362,
+          "records": 4000,
+          "round": 2,
+          "scenario": "unique_titles"
+        },
+        {
+          "allocated_bytes": 1849230,
+          "allocations": 8214,
+          "elapsed_ms": 283.6155,
+          "file_bytes": 673750,
+          "live_heap_bytes_at_ack": 950582,
+          "process_cycles": 144608710,
+          "records": 4000,
+          "round": 3,
+          "scenario": "unique_titles"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "before means the completed reliability implementation before this performance pass, not master.",
+    "Allocator live bytes are not total process working set.",
+    "Process CPU cycles and requested I/O are raw counters, not percentages or physical disk traffic.",
+    "Initial sandbox runs could not resolve foreground applications or register tray icons and are excluded from desktop comparisons."
+  ],
+  "binaries": [
+    {
+      "Label": "master",
+      "Sha256": "106d01f5181073a98d92d8de4854671fd8075d891d1af56440b2accd0c90cd73",
+      "BinaryBytes": 998400
+    },
+    {
+      "Label": "before",
+      "Sha256": "104977f13cab59941c432cf9bf3527f8d6a81ebfad9eaee0bcc75743382236d2",
+      "BinaryBytes": 1050624
+    },
+    {
+      "Label": "optimized",
+      "Sha256": "a9da1a04b0d9e471c4ff9860b993af1acac927092143609c7258069ce933819f",
+      "BinaryBytes": 1054208
+    }
+  ],
+  "desktop_runs": [
+    {
+      "RunId": "20260905T080307409Z-a5cb7633",
+      "Scenario": "Default",
+      "StartedUtc": "2026-09-05T08:03:07.4200133Z",
+      "FinishedUtc": "2026-09-05T08:04:16.8448208Z",
+      "WarmupSeconds": 5,
+      "RequestedMeasurementSeconds": 64,
+      "DesktopAtStart": {
+        "ForegroundAvailable": true,
+        "ShellAvailable": true
+      },
+      "Summary": [
+        {
+          "Label": "master",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.002175,
+          "WorkingSetMeanBytes": 13105309.54,
+          "WorkingSetMedianBytes": 13119488,
+          "WorkingSetP95Bytes": 13119488,
+          "WorkingSetMinBytes": 13053952,
+          "WorkingSetMaxBytes": 13119488,
+          "PrivateMeanBytes": 2120089.6,
+          "PrivateMedianBytes": 2125824,
+          "PrivateP95Bytes": 2154496,
+          "PrivateMinBytes": 2076672,
+          "PrivateMaxBytes": 2154496,
+          "CpuMilliseconds": 343.75,
+          "CpuCyclesDelta": 1646324468,
+          "CpuPercentOneCore": 0.5370911222938908,
+          "CpuPercentMachine": 0.016784097571684087,
+          "ThreadsMin": 7.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 287.0,
+          "HandlesMax": 289.0,
+          "ReadOperations": 0,
+          "WriteOperations": 2,
+          "OtherOperations": 42152,
+          "ReadBytes": 0,
+          "WriteBytes": 1084,
+          "OtherBytes": 2388500,
+          "DesktopIdleSecondsFirst": 0.015,
+          "DesktopIdleSecondsLast": 0.031
+        },
+        {
+          "Label": "before",
+          "SampleCount": 65,
+          "MeasuredSeconds": 63.96729299999999,
+          "WorkingSetMeanBytes": 13338403.45,
+          "WorkingSetMedianBytes": 13344768,
+          "WorkingSetP95Bytes": 13361152,
+          "WorkingSetMinBytes": 13312000,
+          "WorkingSetMaxBytes": 13361152,
+          "PrivateMeanBytes": 2203648.0,
+          "PrivateMedianBytes": 2195456,
+          "PrivateP95Bytes": 2215936,
+          "PrivateMinBytes": 2187264,
+          "PrivateMaxBytes": 2215936,
+          "CpuMilliseconds": 0.0,
+          "CpuCyclesDelta": 9428856,
+          "CpuPercentOneCore": 0.0,
+          "CpuPercentMachine": 0.0,
+          "ThreadsMin": 7.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 296.0,
+          "HandlesMax": 298.0,
+          "ReadOperations": 0,
+          "WriteOperations": 4,
+          "OtherOperations": 63,
+          "ReadBytes": 0,
+          "WriteBytes": 212,
+          "OtherBytes": 814,
+          "DesktopIdleSecondsFirst": 0.015,
+          "DesktopIdleSecondsLast": 0.031
+        },
+        {
+          "Label": "optimized",
+          "SampleCount": 65,
+          "MeasuredSeconds": 63.968659,
+          "WorkingSetMeanBytes": 13306832.74,
+          "WorkingSetMedianBytes": 13312000,
+          "WorkingSetP95Bytes": 13328384,
+          "WorkingSetMinBytes": 13283328,
+          "WorkingSetMaxBytes": 13328384,
+          "PrivateMeanBytes": 2192368.25,
+          "PrivateMedianBytes": 2187264,
+          "PrivateP95Bytes": 2203648,
+          "PrivateMinBytes": 2174976,
+          "PrivateMaxBytes": 2203648,
+          "CpuMilliseconds": 15.625,
+          "CpuCyclesDelta": 8948068,
+          "CpuPercentOneCore": 0.024426024000284263,
+          "CpuPercentMachine": 0.0007633132500088832,
+          "ThreadsMin": 7.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 297.0,
+          "HandlesMax": 299.0,
+          "ReadOperations": 0,
+          "WriteOperations": 4,
+          "OtherOperations": 51,
+          "ReadBytes": 0,
+          "WriteBytes": 212,
+          "OtherBytes": 134,
+          "DesktopIdleSecondsFirst": 0.015,
+          "DesktopIdleSecondsLast": 0.031
+        }
+      ]
+    },
+    {
+      "RunId": "20260905T080416906Z-09b02551",
+      "Scenario": "Titles",
+      "StartedUtc": "2026-09-05T08:04:16.9071638Z",
+      "FinishedUtc": "2026-09-05T08:05:26.1872315Z",
+      "WarmupSeconds": 5,
+      "RequestedMeasurementSeconds": 64,
+      "DesktopAtStart": {
+        "ForegroundAvailable": true,
+        "ShellAvailable": true
+      },
+      "Summary": [
+        {
+          "Label": "master",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.003714,
+          "WorkingSetMeanBytes": 13172483.94,
+          "WorkingSetMedianBytes": 13185024,
+          "WorkingSetP95Bytes": 13193216,
+          "WorkingSetMinBytes": 13107200,
+          "WorkingSetMaxBytes": 13193216,
+          "PrivateMeanBytes": 2146177.97,
+          "PrivateMedianBytes": 2166784,
+          "PrivateP95Bytes": 2170880,
+          "PrivateMinBytes": 2080768,
+          "PrivateMaxBytes": 2170880,
+          "CpuMilliseconds": 453.125,
+          "CpuCyclesDelta": 1868555712,
+          "CpuPercentOneCore": 0.707966728305798,
+          "CpuPercentMachine": 0.022123960259556187,
+          "ThreadsMin": 6.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 287.0,
+          "HandlesMax": 288.0,
+          "ReadOperations": 0,
+          "WriteOperations": 8,
+          "OtherOperations": 42174,
+          "ReadBytes": 0,
+          "WriteBytes": 1211,
+          "OtherBytes": 1967036,
+          "DesktopIdleSecondsFirst": 0.25,
+          "DesktopIdleSecondsLast": 1.141
+        },
+        {
+          "Label": "before",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.002951,
+          "WorkingSetMeanBytes": 13410808.12,
+          "WorkingSetMedianBytes": 13406208,
+          "WorkingSetP95Bytes": 13418496,
+          "WorkingSetMinBytes": 13373440,
+          "WorkingSetMaxBytes": 13418496,
+          "PrivateMeanBytes": 2206105.6,
+          "PrivateMedianBytes": 2207744,
+          "PrivateP95Bytes": 2211840,
+          "PrivateMinBytes": 2183168,
+          "PrivateMaxBytes": 2211840,
+          "CpuMilliseconds": 218.75,
+          "CpuCyclesDelta": 663110108,
+          "CpuPercentOneCore": 0.34178111568636893,
+          "CpuPercentMachine": 0.010680659865199029,
+          "ThreadsMin": 7.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 296.0,
+          "HandlesMax": 298.0,
+          "ReadOperations": 0,
+          "WriteOperations": 10,
+          "OtherOperations": 79,
+          "ReadBytes": 0,
+          "WriteBytes": 488,
+          "OtherBytes": 694,
+          "DesktopIdleSecondsFirst": 0.25,
+          "DesktopIdleSecondsLast": 1.141
+        },
+        {
+          "Label": "optimized",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.001688,
+          "WorkingSetMeanBytes": 13373692.06,
+          "WorkingSetMedianBytes": 13369344,
+          "WorkingSetP95Bytes": 13381632,
+          "WorkingSetMinBytes": 13336576,
+          "WorkingSetMaxBytes": 13381632,
+          "PrivateMeanBytes": 2193376.49,
+          "PrivateMedianBytes": 2195456,
+          "PrivateP95Bytes": 2199552,
+          "PrivateMinBytes": 2170880,
+          "PrivateMaxBytes": 2199552,
+          "CpuMilliseconds": 187.5,
+          "CpuCyclesDelta": 673505709,
+          "CpuPercentOneCore": 0.2929610231530143,
+          "CpuPercentMachine": 0.009155031973531697,
+          "ThreadsMin": 7.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 297.0,
+          "HandlesMax": 301.0,
+          "ReadOperations": 0,
+          "WriteOperations": 10,
+          "OtherOperations": 67,
+          "ReadBytes": 0,
+          "WriteBytes": 488,
+          "OtherBytes": 414,
+          "DesktopIdleSecondsFirst": 0.25,
+          "DesktopIdleSecondsLast": 1.141
+        }
+      ]
+    },
+    {
+      "RunId": "20260905T080526290Z-2a9e30a5",
+      "Scenario": "Default",
+      "StartedUtc": "2026-09-05T08:05:26.2913183Z",
+      "FinishedUtc": "2026-09-05T08:06:35.6415360Z",
+      "WarmupSeconds": 5,
+      "RequestedMeasurementSeconds": 64,
+      "DesktopAtStart": {
+        "ForegroundAvailable": true,
+        "ShellAvailable": true
+      },
+      "Summary": [
+        {
+          "Label": "master",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.016421,
+          "WorkingSetMeanBytes": 13106254.77,
+          "WorkingSetMedianBytes": 13115392,
+          "WorkingSetP95Bytes": 13127680,
+          "WorkingSetMinBytes": 13066240,
+          "WorkingSetMaxBytes": 13127680,
+          "PrivateMeanBytes": 2123177.35,
+          "PrivateMedianBytes": 2125824,
+          "PrivateP95Bytes": 2162688,
+          "PrivateMinBytes": 2064384,
+          "PrivateMaxBytes": 2162688,
+          "CpuMilliseconds": 390.625,
+          "CpuCyclesDelta": 1821911352,
+          "CpuPercentOneCore": 0.6101949998110642,
+          "CpuPercentMachine": 0.019068593744095755,
+          "ThreadsMin": 5.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 287.0,
+          "HandlesMax": 288.0,
+          "ReadOperations": 0,
+          "WriteOperations": 2,
+          "OtherOperations": 42146,
+          "ReadBytes": 0,
+          "WriteBytes": 1084,
+          "OtherBytes": 1966720,
+          "DesktopIdleSecondsFirst": 6.516,
+          "DesktopIdleSecondsLast": 0.109
+        },
+        {
+          "Label": "before",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.016486,
+          "WorkingSetMeanBytes": 13335504.74,
+          "WorkingSetMedianBytes": 13340672,
+          "WorkingSetP95Bytes": 13357056,
+          "WorkingSetMinBytes": 13312000,
+          "WorkingSetMaxBytes": 13357056,
+          "PrivateMeanBytes": 2184176.25,
+          "PrivateMedianBytes": 2179072,
+          "PrivateP95Bytes": 2195456,
+          "PrivateMinBytes": 2166784,
+          "PrivateMaxBytes": 2195456,
+          "CpuMilliseconds": 0.0,
+          "CpuCyclesDelta": 11210036,
+          "CpuPercentOneCore": 0.0,
+          "CpuPercentMachine": 0.0,
+          "ThreadsMin": 7.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 296.0,
+          "HandlesMax": 298.0,
+          "ReadOperations": 0,
+          "WriteOperations": 4,
+          "OtherOperations": 63,
+          "ReadBytes": 0,
+          "WriteBytes": 182,
+          "OtherBytes": 694,
+          "DesktopIdleSecondsFirst": 6.516,
+          "DesktopIdleSecondsLast": 0.109
+        },
+        {
+          "Label": "optimized",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.019205,
+          "WorkingSetMeanBytes": 13317167.26,
+          "WorkingSetMedianBytes": 13320192,
+          "WorkingSetP95Bytes": 13336576,
+          "WorkingSetMinBytes": 13295616,
+          "WorkingSetMaxBytes": 13336576,
+          "PrivateMeanBytes": 2205223.38,
+          "PrivateMedianBytes": 2199552,
+          "PrivateP95Bytes": 2215936,
+          "PrivateMinBytes": 2187264,
+          "PrivateMaxBytes": 2215936,
+          "CpuMilliseconds": 0.0,
+          "CpuCyclesDelta": 8850265,
+          "CpuPercentOneCore": 0.0,
+          "CpuPercentMachine": 0.0,
+          "ThreadsMin": 7.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 297.0,
+          "HandlesMax": 299.0,
+          "ReadOperations": 0,
+          "WriteOperations": 4,
+          "OtherOperations": 51,
+          "ReadBytes": 0,
+          "WriteBytes": 182,
+          "OtherBytes": 134,
+          "DesktopIdleSecondsFirst": 6.516,
+          "DesktopIdleSecondsLast": 0.109
+        }
+      ]
+    },
+    {
+      "RunId": "20260905T080635655Z-2c33312e",
+      "Scenario": "Titles",
+      "StartedUtc": "2026-09-05T08:06:35.6560005Z",
+      "FinishedUtc": "2026-09-05T08:07:45.0428722Z",
+      "WarmupSeconds": 5,
+      "RequestedMeasurementSeconds": 64,
+      "DesktopAtStart": {
+        "ForegroundAvailable": true,
+        "ShellAvailable": true
+      },
+      "Summary": [
+        {
+          "Label": "master",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.01780699999999,
+          "WorkingSetMeanBytes": 13135178.83,
+          "WorkingSetMedianBytes": 13144064,
+          "WorkingSetP95Bytes": 13156352,
+          "WorkingSetMinBytes": 13094912,
+          "WorkingSetMaxBytes": 13172736,
+          "PrivateMeanBytes": 2128344.62,
+          "PrivateMedianBytes": 2142208,
+          "PrivateP95Bytes": 2142208,
+          "PrivateMinBytes": 2101248,
+          "PrivateMaxBytes": 2142208,
+          "CpuMilliseconds": 546.875,
+          "CpuCyclesDelta": 1842752361,
+          "CpuPercentOneCore": 0.8542545045318407,
+          "CpuPercentMachine": 0.026695453266620022,
+          "ThreadsMin": 7.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 287.0,
+          "HandlesMax": 288.0,
+          "ReadOperations": 0,
+          "WriteOperations": 8,
+          "OtherOperations": 42234,
+          "ReadBytes": 0,
+          "WriteBytes": 1197,
+          "OtherBytes": 2033186,
+          "DesktopIdleSecondsFirst": 0.0,
+          "DesktopIdleSecondsLast": 1.078
+        },
+        {
+          "Label": "before",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.03947000000001,
+          "WorkingSetMeanBytes": 13374259.2,
+          "WorkingSetMedianBytes": 13381632,
+          "WorkingSetP95Bytes": 13418496,
+          "WorkingSetMinBytes": 13336576,
+          "WorkingSetMaxBytes": 13438976,
+          "PrivateMeanBytes": 2208689.23,
+          "PrivateMedianBytes": 2203648,
+          "PrivateP95Bytes": 2220032,
+          "PrivateMinBytes": 2187264,
+          "PrivateMaxBytes": 2220032,
+          "CpuMilliseconds": 187.5,
+          "CpuCyclesDelta": 640309784,
+          "CpuPercentOneCore": 0.2927881820383585,
+          "CpuPercentMachine": 0.009149630688698703,
+          "ThreadsMin": 7.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 296.0,
+          "HandlesMax": 298.0,
+          "ReadOperations": 0,
+          "WriteOperations": 9,
+          "OtherOperations": 114,
+          "ReadBytes": 0,
+          "WriteBytes": 452,
+          "OtherBytes": 2200,
+          "DesktopIdleSecondsFirst": 0.0,
+          "DesktopIdleSecondsLast": 1.078
+        },
+        {
+          "Label": "optimized",
+          "SampleCount": 65,
+          "MeasuredSeconds": 64.044404,
+          "WorkingSetMeanBytes": 13336828.06,
+          "WorkingSetMedianBytes": 13348864,
+          "WorkingSetP95Bytes": 13377536,
+          "WorkingSetMinBytes": 13299712,
+          "WorkingSetMaxBytes": 13398016,
+          "PrivateMeanBytes": 2194195.69,
+          "PrivateMedianBytes": 2187264,
+          "PrivateP95Bytes": 2207744,
+          "PrivateMinBytes": 2170880,
+          "PrivateMaxBytes": 2207744,
+          "CpuMilliseconds": 296.875,
+          "CpuCyclesDelta": 662465419,
+          "CpuPercentOneCore": 0.4635455737865872,
+          "CpuPercentMachine": 0.01448579918083085,
+          "ThreadsMin": 7.0,
+          "ThreadsMax": 8.0,
+          "HandlesMin": 297.0,
+          "HandlesMax": 301.0,
+          "ReadOperations": 0,
+          "WriteOperations": 9,
+          "OtherOperations": 78,
+          "ReadBytes": 0,
+          "WriteBytes": 452,
+          "OtherBytes": 924,
+          "DesktopIdleSecondsFirst": 0.0,
+          "DesktopIdleSecondsLast": 1.078
+        }
+      ]
+    }
+  ],
+  "desktop_validation": {
+    "all_12_owned_processes_exited_successfully": true,
+    "forced_terminations": 0,
+    "stderr_messages": 0,
+    "all_runs_foreground_and_shell_available": true,
+    "samples_per_version_per_run": 65,
+    "scenarios_repeated": 2
+  },
+  "resolver": [
+    {
+      "capture_titles": false,
+      "iterations_per_trial": 20000,
+      "trials_per_version": 10,
+      "before_ns_per_resolution": 33278.81,
+      "after_ns_per_resolution": 366.7925,
+      "reduction_percent": 98.89781966362379,
+      "before_samples": [
+        {
+          "capture_titles": false,
+          "elapsed_ns": 666714100,
+          "iterations": 20000,
+          "repetition": 0,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 653999900,
+          "iterations": 20000,
+          "repetition": 1,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 609193500,
+          "iterations": 20000,
+          "repetition": 2,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 639408800,
+          "iterations": 20000,
+          "repetition": 3,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 685832600,
+          "iterations": 20000,
+          "repetition": 4,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 664438300,
+          "iterations": 20000,
+          "repetition": 0,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 645917400,
+          "iterations": 20000,
+          "repetition": 1,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 979217000,
+          "iterations": 20000,
+          "repetition": 2,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 686045700,
+          "iterations": 20000,
+          "repetition": 3,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 852753100,
+          "iterations": 20000,
+          "repetition": 4,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        }
+      ],
+      "after_samples": [
+        {
+          "capture_titles": false,
+          "elapsed_ns": 7427600,
+          "iterations": 20000,
+          "repetition": 0,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 6900500,
+          "iterations": 20000,
+          "repetition": 1,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 8489300,
+          "iterations": 20000,
+          "repetition": 2,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 7244100,
+          "iterations": 20000,
+          "repetition": 3,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 6972300,
+          "iterations": 20000,
+          "repetition": 4,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 9870900,
+          "iterations": 20000,
+          "repetition": 0,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 9195700,
+          "iterations": 20000,
+          "repetition": 1,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 9001900,
+          "iterations": 20000,
+          "repetition": 2,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 6909400,
+          "iterations": 20000,
+          "repetition": 3,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": false,
+          "elapsed_ns": 6995800,
+          "iterations": 20000,
+          "repetition": 4,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        }
+      ]
+    },
+    {
+      "capture_titles": true,
+      "iterations_per_trial": 20000,
+      "trials_per_version": 10,
+      "before_ns_per_resolution": 42687.915,
+      "after_ns_per_resolution": 868.0,
+      "reduction_percent": 97.96663763034573,
+      "before_samples": [
+        {
+          "capture_titles": true,
+          "elapsed_ns": 846141800,
+          "iterations": 20000,
+          "repetition": 0,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 856910600,
+          "iterations": 20000,
+          "repetition": 1,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 807308400,
+          "iterations": 20000,
+          "repetition": 2,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 844246500,
+          "iterations": 20000,
+          "repetition": 3,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 850606000,
+          "iterations": 20000,
+          "repetition": 4,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 875000300,
+          "iterations": 20000,
+          "repetition": 0,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 867509500,
+          "iterations": 20000,
+          "repetition": 1,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 951611000,
+          "iterations": 20000,
+          "repetition": 2,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 1080770300,
+          "iterations": 20000,
+          "repetition": 3,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 838401700,
+          "iterations": 20000,
+          "repetition": 4,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        }
+      ],
+      "after_samples": [
+        {
+          "capture_titles": true,
+          "elapsed_ns": 17405800,
+          "iterations": 20000,
+          "repetition": 0,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 18111600,
+          "iterations": 20000,
+          "repetition": 1,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 16450400,
+          "iterations": 20000,
+          "repetition": 2,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 16776300,
+          "iterations": 20000,
+          "repetition": 3,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 16531000,
+          "iterations": 20000,
+          "repetition": 4,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 16765300,
+          "iterations": 20000,
+          "repetition": 0,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 17314200,
+          "iterations": 20000,
+          "repetition": 1,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 18454400,
+          "iterations": 20000,
+          "repetition": 2,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 19610900,
+          "iterations": 20000,
+          "repetition": 3,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        },
+        {
+          "capture_titles": true,
+          "elapsed_ns": 19430000,
+          "iterations": 20000,
+          "repetition": 4,
+          "resolved": 20000,
+          "scenario": "window_resolution"
+        }
+      ]
+    }
+  ]
+}

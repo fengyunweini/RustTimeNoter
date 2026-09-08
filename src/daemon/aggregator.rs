@@ -1,21 +1,5 @@
-//! 段聚合状态机。**不依赖 Windows API**，便于单元测试。
-//!
-//! 输入事件流（按时间到达）：
-//! - `Foreground { app, t }`        前台切换
-//! - `IdleTick { now, last_input }`  AFK 探测
-//! - `SessionLock { t }` / `SessionUnlock { t }`
-//! - `Suspend { t }` / `Resume { t }`
-//! - `Shutdown { t }`
-//!
-//! 输出：完整的 `Segment`，由调用方塞给 writer。
-//!
-//! 语义：
-//! - 锁屏 / 休眠 / AFK 期间不计时。
-//! - AFK 切割边界 = `last_input + afk_threshold`。
-//! - 同一 app 连续切换（标题不变）会合并？v1 不合并：每次 Foreground 即新段，避免逻辑复杂。
-//!   *但*：相同 app+title 的连续 Foreground（罕见，常见于 Alt-Tab 来回）确实会产生琐碎段；
-//!   留待 query 层合并。
-
+//! Ordered segment aggregation. Monotonic time determines durations; wall time
+//! labels persisted records. The accounting layer orders and validates events.
 use crate::storage::Segment;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,231 +9,395 @@ pub struct AppKey {
     pub title: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-pub enum Event {
-    /// 前台切换。
-    /// `t` = 切换发生时刻；`last_input` = OS 报告的最近一次键鼠输入时刻
-    /// （用 `GetLastInputInfo` 取，绝不能用 `t` 充数 —— 否则 AFK 期间任何
-    /// 抢焦窗口都会把 AFK 计时器重置）。
-    Foreground { app: AppKey, t: u64, last_input: u64 },
-    IdleTick { now: u64, last_input: u64 },
-    SessionLock { t: u64 },
-    SessionUnlock { t: u64 },
-    Suspend { t: u64 },
-    Resume { t: u64 },
-    Shutdown { t: u64 },
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct MonoTime(pub u64);
+
+impl MonoTime {
+    pub const fn from_millis(milliseconds: u64) -> Self {
+        Self(milliseconds)
+    }
+    pub fn elapsed_millis_since(self, earlier: Self) -> u64 {
+        self.0.saturating_sub(earlier.0)
+    }
+    pub fn saturating_add_millis(self, milliseconds: u64) -> Self {
+        Self(self.0.saturating_add(milliseconds))
+    }
+    pub fn min(self, other: Self) -> Self {
+        Self(self.0.min(other.0))
+    }
+    pub fn max(self, other: Self) -> Self {
+        Self(self.0.max(other.0))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TimePoint {
+    pub monotonic: MonoTime,
+    pub wall_unix_millis: u64,
+}
+
+impl TimePoint {
+    pub const fn new(monotonic_millis: u64, wall_unix_millis: u64) -> Self {
+        Self {
+            monotonic: MonoTime(monotonic_millis),
+            wall_unix_millis,
+        }
+    }
+
+    pub fn project(self, monotonic: MonoTime) -> Self {
+        let wall_unix_millis = if monotonic >= self.monotonic {
+            self.wall_unix_millis
+                .saturating_add(monotonic.elapsed_millis_since(self.monotonic))
+        } else {
+            self.wall_unix_millis
+                .saturating_sub(self.monotonic.elapsed_millis_since(monotonic))
+        };
+        Self {
+            monotonic,
+            wall_unix_millis,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
+pub enum Event {
+    Foreground {
+        app: AppKey,
+        at: TimePoint,
+        last_input: MonoTime,
+    },
+    IdleTick {
+        at: TimePoint,
+        last_input: MonoTime,
+    },
+    Checkpoint {
+        at: TimePoint,
+        last_input: MonoTime,
+    },
+    SessionLock {
+        at: TimePoint,
+    },
+    SessionUnlock {
+        at: TimePoint,
+    },
+    Suspend {
+        at: TimePoint,
+    },
+    Resume {
+        at: TimePoint,
+    },
+    Shutdown {
+        at: TimePoint,
+    },
+}
+
+#[derive(Debug)]
 struct Active {
     app: AppKey,
-    started_at: u64,
-    /// 最近一次"已确认有键鼠输入"的时刻；用于 AFK 切割。
-    last_input: u64,
+    started: TimePoint,
+    last_input: MonoTime,
 }
 
 #[derive(Debug)]
 pub struct Aggregator {
-    afk_threshold: u64,
+    afk_millis: u64,
     active: Option<Active>,
-    /// 是否被外部门控关闭（锁屏 / 休眠）。被关闭时不允许有 active。
-    suppressed: bool,
+    // Input belongs to the session, not to one resolved foreground segment.
+    // A gap/reset must not make a later regressing OS sample erase evidence.
+    input_seen: Option<MonoTime>,
+    locked: bool,
+    suspended: bool,
 }
 
 impl Aggregator {
     pub fn new(afk_threshold_secs: u64) -> Self {
-        Self { afk_threshold: afk_threshold_secs.max(1), active: None, suppressed: false }
-    }
-
-    /// 处理一条事件；返回此次产生的所有 segment（通常是 0 或 1）。
-    pub fn handle(&mut self, ev: Event) -> Vec<Segment> {
-        let mut out = Vec::new();
-        match ev {
-            Event::Foreground { app, t, last_input } => {
-                if self.suppressed {
-                    return out; // 锁屏/休眠期间忽略前台切换
-                }
-                // 用 OS 报告的 last_input 作为种子；夹到 [0, t] 之间。
-                let seeded_last_input = last_input.min(t);
-                let idle_for = t.saturating_sub(seeded_last_input);
-                if idle_for >= self.afk_threshold {
-                    // 用户根本没操作，但窗口抢了焦点 —— 不能算作活跃。
-                    // 把旧段（若有）按 AFK 边界裁掉，不开新段。
-                    if let Some(a) = &self.active {
-                        let cut_at = (a.last_input.max(a.started_at) + self.afk_threshold).min(t);
-                        if let Some(seg) = self.close_active(cut_at) {
-                            out.push(seg);
-                        }
-                    }
-                    return out;
-                }
-                if let Some(seg) = self.close_active(t) {
-                    out.push(seg);
-                }
-                self.active = Some(Active { app, started_at: t, last_input: seeded_last_input });
-            }
-            Event::IdleTick { now, last_input } => {
-                if let Some(a) = &mut self.active {
-                    // 信任 OS：直接覆盖，不要 max。max 会让被抢焦点污染过的
-                    // last_input 卡在未来时刻，永远检测不到 AFK。
-                    // 夹到 [started_at, now]：不可能比段开始更早，也不可能比现在更晚。
-                    a.last_input = last_input.clamp(a.started_at, now);
-                    let idle_for = now.saturating_sub(a.last_input);
-                    if idle_for >= self.afk_threshold {
-                        let cut_at = (a.last_input + self.afk_threshold).min(now);
-                        if let Some(seg) = self.close_active(cut_at) {
-                            out.push(seg);
-                        }
-                    }
-                }
-            }
-            Event::SessionLock { t } | Event::Suspend { t } => {
-                if let Some(seg) = self.close_active(t) {
-                    out.push(seg);
-                }
-                self.suppressed = true;
-            }
-            Event::SessionUnlock { t } | Event::Resume { t } => {
-                self.suppressed = false;
-                // 不在此处自动开始：等待下一个 Foreground 事件。
-                let _ = t;
-            }
-            Event::Shutdown { t } => {
-                if let Some(seg) = self.close_active(t) {
-                    out.push(seg);
-                }
-            }
+        Self {
+            afk_millis: afk_threshold_secs.max(1).saturating_mul(1_000),
+            active: None,
+            input_seen: None,
+            locked: false,
+            suspended: false,
         }
-        out
     }
 
-    /// 当前是否有活跃段。runtime 在 IdleTick 发现用户回来但 agg 已空闲时，
-    /// 用它判断要不要补一个 Foreground 事件以恢复跟踪。
+    pub fn handle(&mut self, event: Event) -> Vec<Segment> {
+        match event {
+            Event::Foreground {
+                app,
+                at,
+                last_input,
+            } => self.observe_foreground(app, at, last_input),
+            Event::IdleTick { at, last_input } => self.observe_input(at, last_input),
+            Event::Checkpoint { at, last_input } => {
+                let mut output = self.observe_input(at, last_input);
+                output.extend(self.checkpoint(at));
+                output
+            }
+            Event::SessionLock { at } => self.set_suppression(at, true, self.suspended),
+            Event::SessionUnlock { at } => self.set_suppression(at, false, self.suspended),
+            Event::Suspend { at } => self.set_suppression(at, self.locked, true),
+            Event::Resume { at } => self.set_suppression(at, self.locked, false),
+            Event::Shutdown { at } => self.close(at),
+        }
+    }
+
     pub fn is_active(&self) -> bool {
-        self.active.is_some() && !self.suppressed
+        self.active.is_some() && !self.is_suppressed()
     }
-
     pub fn is_suppressed(&self) -> bool {
-        self.suppressed
+        self.locked || self.suspended
+    }
+    pub fn current_app(&self) -> Option<&AppKey> {
+        self.active.as_ref().map(|active| &active.app)
     }
 
-    fn close_active(&mut self, end_t: u64) -> Option<Segment> {
-        let a = self.active.take()?;
-        let end = end_t.max(a.started_at);
-        if end <= a.started_at {
+    /// A delayed callback may have no causal new input sample. Previously
+    /// confirmed input still proves activity through its original deadline;
+    /// reusing it here does not refresh or extend that deadline.
+    pub fn confirmed_input(&self, at: TimePoint) -> Option<MonoTime> {
+        self.input_seen.filter(|input| {
+            *input <= at.monotonic && at.monotonic.elapsed_millis_since(*input) <= self.afk_millis
+        })
+    }
+
+    pub(crate) fn input_seen(&self) -> Option<MonoTime> {
+        self.input_seen
+    }
+
+    pub fn confirmed_through(&self) -> Option<MonoTime> {
+        self.active
+            .as_ref()
+            .map(|active| active.last_input.saturating_add_millis(self.afk_millis))
+    }
+
+    /// GetLastInputInfo can return a timestamp older than a previous reading.
+    /// Retain a causal input already witnessed by this session without
+    /// refreshing its deadline or hiding a failed/future observation.
+    pub(crate) fn monotonic_input(
+        &self,
+        at: TimePoint,
+        observed: Option<MonoTime>,
+    ) -> Option<MonoTime> {
+        observed
+            .filter(|input| *input <= at.monotonic)
+            .map(|input| {
+                self.input_seen
+                    .filter(|seen| *seen <= at.monotonic)
+                    .map_or(input, |seen| input.max(seen))
+            })
+    }
+
+    /// Remember causal input without attributing activity to any window.
+    pub(crate) fn remember_input(&mut self, at: TimePoint, input: MonoTime) {
+        if input <= at.monotonic {
+            self.input_seen = Some(self.input_seen.map_or(input, |seen| seen.max(input)));
+        }
+    }
+
+    /// Only a causal OS input observation changes the idle deadline.
+    pub fn observe_input(&mut self, at: TimePoint, last_input: MonoTime) -> Vec<Segment> {
+        let Some(last_input) = self.monotonic_input(at, Some(last_input)) else {
+            return Vec::new();
+        };
+        self.remember_input(at, last_input);
+        let Some(active) = self.active.as_mut() else {
+            return Vec::new();
+        };
+        active.last_input = last_input;
+        if at.monotonic.elapsed_millis_since(last_input) >= self.afk_millis {
+            return self.close(at);
+        }
+        Vec::new()
+    }
+
+    pub fn observe_foreground(
+        &mut self,
+        app: AppKey,
+        at: TimePoint,
+        last_input: MonoTime,
+    ) -> Vec<Segment> {
+        if self.is_suppressed() {
+            return Vec::new();
+        }
+        let Some(last_input) = self.monotonic_input(at, Some(last_input)) else {
+            return Vec::new();
+        };
+        let output = self.observe_input(at, last_input);
+        if at.monotonic.elapsed_millis_since(last_input) >= self.afk_millis {
+            return output;
+        }
+        if self.current_app() == Some(&app) {
+            return output;
+        }
+        let started = self
+            .active
+            .as_ref()
+            .map(|active| active.started.project(at.monotonic))
+            .unwrap_or(at);
+        // Reaching this branch means observe_input did not close for AFK, so
+        // it produced no segment. Transfer the closing batch without a copy.
+        let output = self.close(at);
+        self.active = Some(Active {
+            app,
+            started,
+            last_input,
+        });
+        output
+    }
+
+    pub fn set_suppression(
+        &mut self,
+        at: TimePoint,
+        locked: bool,
+        suspended: bool,
+    ) -> Vec<Segment> {
+        let output = if locked || suspended {
+            self.close(at)
+        } else {
+            Vec::new()
+        };
+        self.locked = locked;
+        self.suspended = suspended;
+        output
+    }
+
+    /// Persist only through this already-ordered observation, preserving the
+    /// fractional second remainder in the continuation.
+    pub fn checkpoint(&mut self, at: TimePoint) -> Vec<Segment> {
+        let Some(active) = self.active.as_ref() else {
+            return Vec::new();
+        };
+        let end = at
+            .monotonic
+            .min(active.last_input.saturating_add_millis(self.afk_millis));
+        if end < at.monotonic {
+            return self.close(at);
+        }
+        let Some(segment) = Self::segment(active, end) else {
+            return Vec::new();
+        };
+        let active = self.active.as_mut().expect("checked above");
+        active.started = active.started.project(end);
+        vec![segment]
+    }
+
+    /// Closing without a fresh sample never extends past the last confirmed
+    /// input deadline. Callers must supply events in monotonic order.
+    pub fn close(&mut self, at: TimePoint) -> Vec<Segment> {
+        let Some(active) = self.active.take() else {
+            return Vec::new();
+        };
+        let end = at
+            .monotonic
+            .min(active.last_input.saturating_add_millis(self.afk_millis));
+        let Some((start_unix, end_unix)) = Self::segment_bounds(&active, end) else {
+            return Vec::new();
+        };
+        // A closed segment owns the strings already. Only checkpoints need
+        // copies because they retain an active continuation of the same app.
+        vec![Segment {
+            app_path: active.app.path,
+            app_basename: active.app.basename,
+            title: active.app.title,
+            start_unix,
+            end_unix,
+        }]
+    }
+
+    pub fn reset(&mut self) {
+        self.active = None;
+    }
+
+    fn segment(active: &Active, end: MonoTime) -> Option<Segment> {
+        let (start_unix, end_unix) = Self::segment_bounds(active, end)?;
+        Some(Segment {
+            app_path: active.app.path.clone(),
+            app_basename: active.app.basename.clone(),
+            title: active.app.title.clone(),
+            start_unix,
+            end_unix,
+        })
+    }
+
+    fn segment_bounds(active: &Active, end: MonoTime) -> Option<(u64, u64)> {
+        if end <= active.started.monotonic {
             return None;
         }
-        Some(Segment {
-            app_path: a.app.path,
-            app_basename: a.app.basename,
-            title: a.app.title,
-            start_unix: a.started_at,
-            end_unix: end,
-        })
+        let start_unix = active.started.wall_unix_millis / 1_000;
+        let end_unix = active.started.project(end).wall_unix_millis / 1_000;
+        (end_unix > start_unix).then_some((start_unix, end_unix))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     fn app(name: &str) -> AppKey {
-        AppKey { path: format!("C:/{}.exe", name), basename: format!("{name}.exe"), title: None }
+        AppKey {
+            path: name.into(),
+            basename: name.into(),
+            title: None,
+        }
     }
-
-    fn fg(name: &str, t: u64) -> Event {
-        Event::Foreground { app: app(name), t, last_input: t }
+    fn at(seconds: u64) -> TimePoint {
+        TimePoint::new(seconds * 1_000, 1_000_000 + seconds * 1_000)
     }
-
-    #[test]
-    fn switch_emits_segment() {
-        let mut a = Aggregator::new(300);
-        assert!(a.handle(fg("a", 100)).is_empty());
-        let segs = a.handle(fg("b", 150));
-        assert_eq!(segs.len(), 1);
-        assert_eq!(segs[0].duration(), 50);
-        assert_eq!(segs[0].app_basename, "a.exe");
+    fn mono(seconds: u64) -> MonoTime {
+        MonoTime(seconds * 1_000)
     }
 
     #[test]
-    fn afk_cuts_segment() {
-        let mut a = Aggregator::new(300);
-        a.handle(fg("a", 0));
-        // 用户在 t=10 有输入；t=400 探测，距 last_input 390 > 300
-        let segs = a.handle(Event::IdleTick { now: 400, last_input: 10 });
-        assert_eq!(segs.len(), 1);
-        assert_eq!(segs[0].end_unix, 10 + 300);
+    fn afk_uses_real_input_even_when_it_predates_a_segment() {
+        let mut agg = Aggregator::new(300);
+        agg.observe_foreground(app("a"), at(0), mono(0));
+        let mut out = agg.observe_foreground(app("b"), at(250), mono(0));
+        out.extend(agg.observe_input(at(310), mono(0)));
+        assert_eq!(out.iter().map(Segment::duration).sum::<u64>(), 300);
+        assert!(!agg.is_active());
     }
 
     #[test]
-    fn lock_suppresses_then_unlock_resumes_on_foreground() {
-        let mut a = Aggregator::new(300);
-        a.handle(fg("a", 0));
-        let segs = a.handle(Event::SessionLock { t: 50 });
-        assert_eq!(segs.len(), 1);
-        assert_eq!(segs[0].duration(), 50);
-        // 锁屏期间切窗忽略
-        assert!(a.handle(fg("b", 60)).is_empty());
-        // 解锁后等下一次 Foreground
-        a.handle(Event::SessionUnlock { t: 100 });
-        assert!(a.handle(Event::IdleTick { now: 110, last_input: 100 }).is_empty());
-        a.handle(fg("c", 120));
-        let segs = a.handle(Event::Shutdown { t: 130 });
-        assert_eq!(segs.len(), 1);
-        assert_eq!(segs[0].app_basename, "c.exe");
+    fn lock_and_suspend_have_independent_lifetimes() {
+        let mut agg = Aggregator::new(300);
+        agg.observe_foreground(app("a"), at(0), mono(0));
+        assert_eq!(
+            agg.handle(Event::SessionLock { at: at(5) })[0].duration(),
+            5
+        );
+        agg.handle(Event::Suspend { at: at(6) });
+        agg.handle(Event::Resume { at: at(100) });
+        assert!(agg.is_suppressed());
+        agg.observe_foreground(app("b"), at(101), mono(100));
+        assert!(!agg.is_active());
+        agg.handle(Event::SessionUnlock { at: at(102) });
+        assert!(!agg.is_suppressed());
+        assert!(!agg.is_active());
     }
 
     #[test]
-    fn suspend_resume_keeps_no_segment_until_foreground() {
-        let mut a = Aggregator::new(300);
-        a.handle(fg("a", 0));
-        a.handle(Event::Suspend { t: 30 });
-        a.handle(Event::Resume { t: 1000 });
-        let segs = a.handle(Event::Shutdown { t: 1010 });
-        assert!(segs.is_empty()); // resume 后无新 foreground，无段
+    fn checkpoints_keep_fractional_remainder_and_monotonic_duration() {
+        let mut agg = Aggregator::new(300);
+        agg.observe_foreground(app("a"), TimePoint::new(0, 1_000_200), mono(0));
+        assert!(agg.checkpoint(TimePoint::new(200, 99_000_000)).is_empty());
+        let mut out = agg.checkpoint(TimePoint::new(1_100, 1));
+        out.extend(agg.checkpoint(TimePoint::new(1_900, 999_000_000)));
+        out.extend(agg.close(TimePoint::new(2_900, 0)));
+        assert_eq!(out.iter().map(Segment::duration).sum::<u64>(), 3);
+        assert!(out
+            .windows(2)
+            .all(|pair| pair[0].end_unix == pair[1].start_unix));
     }
 
     #[test]
-    fn idle_tick_with_recent_input_no_cut() {
-        let mut a = Aggregator::new(300);
-        a.handle(fg("a", 0));
-        let segs = a.handle(Event::IdleTick { now: 100, last_input: 90 });
-        assert!(segs.is_empty());
-    }
-
-    // ── 回归用例：AFK 期间被抢焦点不能重置 AFK 计时器 ──
-
-    #[test]
-    fn focus_steal_during_afk_does_not_reset_idle_clock() {
-        let mut a = Aggregator::new(300);
-        // t=0 用户打开 app a，之后离开
-        a.handle(Event::Foreground { app: app("a"), t: 0, last_input: 0 });
-        // t=100..400 用户 AFK；t=400 一个通知 popup 抢了焦点
-        // last_input 在 OS 看来还是 0（用户根本没动过）
-        let segs = a.handle(Event::Foreground { app: app("notif"), t: 400, last_input: 0 });
-        // 旧段 a 应该袖珍 —— 但由于用户已 AFK，notif 也不能被认为活跃
-        // 旧段裁到 0 + 300 = 300
-        assert_eq!(segs.len(), 1);
-        assert_eq!(segs[0].app_basename, "a.exe");
-        assert_eq!(segs[0].end_unix, 300);
-        // notif 无活跃段；后续 IdleTick 不产生任何东西
-        assert!(!a.is_active());
-        let segs = a.handle(Event::IdleTick { now: 1000, last_input: 0 });
-        assert!(segs.is_empty());
-    }
-
-    #[test]
-    fn idle_tick_trusts_os_even_if_previous_value_was_higher() {
-        let mut a = Aggregator::new(300);
-        // Foreground 带了个可信的 last_input=100
-        a.handle(Event::Foreground { app: app("a"), t: 100, last_input: 100 });
-        // 紧跟一个补手 IdleTick，“伪造”高 last_input（现实中不可能发生，
-        // 但以防 OS、时钟抬起等场景）——之后 OS 报告 low
-        a.handle(Event::IdleTick { now: 200, last_input: 200 });
-        // 现在 OS 说：last_input 还是 100（用户这期间根本没动）
-        // 老版本用 max() 会卡在 200；新版本应该覆盖为 100。
-        let segs = a.handle(Event::IdleTick { now: 500, last_input: 100 });
-        assert_eq!(segs.len(), 1);
-        assert_eq!(segs[0].end_unix, 100 + 300);
+    fn title_transition_accepts_a_real_input_without_using_title_as_input() {
+        let mut agg = Aggregator::new(300);
+        agg.observe_foreground(app("a"), at(0), mono(0));
+        agg.observe_input(at(300), mono(5));
+        let mut titled = app("a");
+        titled.title = Some("edited".into());
+        let mut out = agg.observe_foreground(titled, at(306), mono(304));
+        out.extend(agg.observe_input(at(330), mono(329)));
+        out.extend(agg.close(at(340)));
+        assert_eq!(out.iter().map(Segment::duration).sum::<u64>(), 340);
     }
 }

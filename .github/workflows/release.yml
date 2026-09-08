@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    env:
+      CARGO_INCREMENTAL: '0'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0
+        with:
+          toolchain: 1.97.1
+      - name: Verify version, master ancestry and successful CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:GITHUB_REF_NAME
+          if ($tag -notmatch '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
+            throw 'Release tags must use vMAJOR.MINOR.PATCH.'
+          }
+          $metadataText = cargo metadata --locked --no-deps --format-version 1
+          if ($LASTEXITCODE -ne 0) { throw 'cargo metadata failed.' }
+          $package = ($metadataText | ConvertFrom-Json).packages | Where-Object name -eq 'tracker'
+          if ($tag -cne "v$($package.version)") { throw 'Tag does not match Cargo package version.' }
+          if (-not (Test-Path -LiteralPath "docs/releases/$tag.md" -PathType Leaf)) {
+            throw 'Versioned release notes are missing.'
+          }
+          $commit = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve release commit.' }
+          git merge-base --is-ancestor $commit origin/master
+          if ($LASTEXITCODE -ne 0) { throw 'Release commit is not on master.' }
+          $runsText = gh api "repos/$env:GITHUB_REPOSITORY/actions/workflows/windows-ci.yml/runs?event=push&head_sha=$commit&per_page=100"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read master CI runs.' }
+          $run = ($runsText | ConvertFrom-Json).workflow_runs |
+            Where-Object { $_.head_sha -eq $commit -and $_.head_branch -eq 'master' -and $_.event -eq 'push' } |
+            Sort-Object run_number -Descending | Select-Object -First 1
+          if (-not $run -or $run.status -ne 'completed' -or $run.conclusion -ne 'success') {
+            throw 'Wait for successful Windows CI on this exact master commit before pushing its release tag.'
+          }
+          $jobsText = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$($run.id)/jobs?per_page=100"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read CI jobs.' }
+          $jobs = ($jobsText | ConvertFrom-Json).jobs
+          foreach ($required in @('fmt', 'clippy', 'test-debug', 'test-release')) {
+            if (-not ($jobs | Where-Object { $_.name -ceq $required -and $_.conclusion -eq 'success' })) {
+              throw "Required check did not pass: $required"
+            }
+          }
+      - name: Build and verify Windows package
+        run: ./scripts/build-installer.ps1
+      - name: Publish release with checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:GITHUB_REF_NAME
+          gh release create $tag 'target/release/tracker.exe' "target/RustTimeNoter-$tag.zip" 'target/SHA256SUMS.txt' --repo $env:GITHUB_REPOSITORY --verify-tag --draft --title $tag --notes-file "docs/releases/$tag.md"
+          if ($LASTEXITCODE -ne 0) { throw 'Release creation or asset upload failed; inspect any draft before retrying.' }
+          gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Assets uploaded, but publishing the draft release failed.' }

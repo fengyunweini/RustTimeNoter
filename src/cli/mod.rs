@@ -1,8 +1,8 @@
 //! 命令行解析（手写，零 clap，用 `lexopt` 做底层 token 流）。
 
-pub mod report;
-pub mod export;
 pub mod config_cmd;
+pub mod export;
+pub mod report;
 pub mod status;
 pub mod tail;
 pub mod view;
@@ -66,12 +66,21 @@ SUBCOMMANDS:
 
 impl Cli {
     pub fn parse() -> Result<Self, lexopt::Error> {
-        let mut p = lexopt::Parser::from_env();
-        while let Some(arg) = p.next()? {
+        Self::parse_from(lexopt::Parser::from_env(), |help| {
+            print!("{help}");
+            std::process::exit(0);
+        })
+    }
+
+    fn parse_from(
+        mut p: lexopt::Parser,
+        mut show_help: impl FnMut(&str) -> Result<Self, lexopt::Error>,
+    ) -> Result<Self, lexopt::Error> {
+        if let Some(arg) = p.next()? {
             match arg {
                 Short('h') | Long("help") => {
-                    print!("{HELP}");
-                    std::process::exit(0);
+                    parse_no_arguments(&mut p)?;
+                    return show_help(HELP);
                 }
                 Short('V') | Long("version") => {
                     println!("tracker {VERSION}");
@@ -98,18 +107,113 @@ impl Cli {
                         #[cfg(windows)]
                         "setup" => Cmd::Setup,
                         "help" => {
-                            print!("{HELP}");
-                            std::process::exit(0);
+                            parse_no_arguments(&mut p)?;
+                            return show_help(HELP);
                         }
                         other => {
                             return Err(lexopt::Error::UnexpectedArgument(other.into()));
                         }
                     };
+                    // Dedicated parsers already consume their options. For
+                    // bare commands, validate every remaining token before
+                    // either showing help or allowing command dispatch.
+                    if parse_no_arguments(&mut p)? {
+                        return show_help(HELP);
+                    }
                     return Ok(Cli { command: Some(cmd) });
                 }
                 _ => return Err(arg.unexpected()),
             }
         }
         Ok(Cli { command: None })
+    }
+}
+
+fn parse_no_arguments(p: &mut lexopt::Parser) -> Result<bool, lexopt::Error> {
+    let mut help = false;
+    while let Some(arg) = p.next()? {
+        match arg {
+            Short('h') | Long("help") => help = true,
+            _ => return Err(arg.unexpected()),
+        }
+    }
+    // Reading through the end also rejects an attached value such as
+    // --help=bad; an early help exit would bypass lexopt's validation.
+    Ok(help)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NO_ARGUMENT_COMMANDS: &[&str] = &[
+        "run",
+        "status",
+        #[cfg(windows)]
+        "stop",
+        #[cfg(windows)]
+        "setup",
+        #[cfg(windows)]
+        "service-main",
+    ];
+
+    #[test]
+    fn no_argument_commands_accept_only_the_command_itself() {
+        for command in NO_ARGUMENT_COMMANDS {
+            let parsed = Cli::parse_from(lexopt::Parser::from_args([*command]), |_| {
+                panic!("unexpected help for {command}")
+            })
+            .unwrap();
+            assert!(parsed.command.is_some(), "{command}");
+        }
+    }
+
+    #[test]
+    fn no_argument_help_never_returns_a_dispatchable_command() {
+        for command in NO_ARGUMENT_COMMANDS {
+            for flag in ["-h", "--help"] {
+                let mut help_shown = false;
+                let parsed = Cli::parse_from(lexopt::Parser::from_args([*command, flag]), |text| {
+                    assert!(text.contains("tracker"));
+                    help_shown = true;
+                    // A harmless sentinel replaces the real help callback's
+                    // process exit; this test never dispatches a command.
+                    Ok(Cli { command: None })
+                })
+                .unwrap();
+                assert!(help_shown, "{command} {flag} did not show help");
+                assert!(parsed.command.is_none(), "{command} {flag} can dispatch");
+            }
+        }
+    }
+
+    #[test]
+    fn no_argument_commands_reject_unknown_flags_and_extra_positionals() {
+        for command in NO_ARGUMENT_COMMANDS {
+            for extra in [
+                &["--not-an-option"][..],
+                &["unexpected"][..],
+                &["--help=bad"][..],
+                &["--help", "unexpected"][..],
+                &["-hx"][..],
+                &["--", "--help"][..],
+            ] {
+                let parsed = Cli::parse_from(
+                    lexopt::Parser::from_args(
+                        std::iter::once(*command).chain(extra.iter().copied()),
+                    ),
+                    |_| Ok(Cli { command: None }),
+                );
+                assert!(parsed.is_err(), "accepted {command} {extra:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn malformed_top_level_help_does_not_bypass_argument_validation() {
+        let parsed = Cli::parse_from(lexopt::Parser::from_args(["--help=bad"]), |_| {
+            Ok(Cli { command: None })
+        });
+        assert!(parsed.is_err());
     }
 }

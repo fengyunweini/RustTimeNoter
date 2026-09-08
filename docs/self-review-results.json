@@ -1,0 +1,2422 @@
+{
+  "date": "2026-09-08",
+  "baseline_commit": "2d421ddc04adb50c7b0104e643a662ee667601cf",
+  "environment": {
+    "cpu": "AMD Ryzen 9 7945HX",
+    "logical_processors": 32,
+    "windows_build": 26200,
+    "rustc": "1.97.1",
+    "build": "release, opt-level=z, fat LTO, x64 MSVC, stripped"
+  },
+  "raw_directory": "target/self-review-20260908",
+  "validation": {
+    "debug_tests_passed": 180,
+    "release_tests_passed": 180,
+    "lib_tests": 170,
+    "bin_tests": 1,
+    "data_integrity_tests": 3,
+    "e2e_tests": 6,
+    "clippy_deny_warnings": "passed",
+    "rustfmt_changed_files": "passed",
+    "git_diff_check": "passed",
+    "isolated_release_cli_cases": 3,
+    "real_os_shutdown_sleep_service_changes": "not performed"
+  },
+  "binaries": {
+    "before.exe": {
+      "bytes": 1058816,
+      "sha256": "2156b6a1af6fd81b3666212d33e0baf0948f264c2af61c73ab7ccc340c01e8cd"
+    },
+    "after.exe": {
+      "bytes": 1062912,
+      "sha256": "16ef09f37ce526495cedbbc3daec36e0e6896e1025e227b72932013f3027fcfb"
+    },
+    "before-accounting.exe": {
+      "bytes": 172032,
+      "sha256": "ba0bd9476e934b00e2953168f1e21b7e55071ee8aa5d93e87b99e784c991465f"
+    },
+    "after-accounting.exe": {
+      "bytes": 175104,
+      "sha256": "bda48da69c343c110905655794b95bab741408344d94be7c3f6d9ca46fcc06a2"
+    },
+    "before-log.exe": {
+      "bytes": 321024,
+      "sha256": "127b214c8b88c961185dc0e7913e4a9474d2490d2ca79db49b077a0f44101f42"
+    },
+    "after-log.exe": {
+      "bytes": 321024,
+      "sha256": "d8fc8ea83555fd80c334764deea4a532731c37a7772e0e344ff9610d4c3d0775"
+    }
+  },
+  "accounting": [
+    {
+      "scenario": "samples_30s",
+      "versions": {
+        "before": {
+          "median_ms": 33.894400000000005,
+          "trials": 28,
+          "raw_rows": [
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 21800799,
+              "allocations": 500000,
+              "checkpoints": 100000,
+              "duration_secs": 2999971,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 32423400,
+              "ns_per_observation": 324.234,
+              "observation_size_bytes": 128,
+              "output_digest": "10939079030382735783",
+              "overlap": false,
+              "peak_extra_live_bytes": 1082,
+              "segments": 100000,
+              "trials_ns": [
+                32423400,
+                32999500,
+                32835700,
+                33838900,
+                32035100,
+                32175400,
+                32403100
+              ],
+              "workload": "samples_30s"
+            },
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 21800799,
+              "allocations": 500000,
+              "checkpoints": 100000,
+              "duration_secs": 2999971,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 35897600,
+              "ns_per_observation": 358.976,
+              "observation_size_bytes": 128,
+              "output_digest": "10939079030382735783",
+              "overlap": false,
+              "peak_extra_live_bytes": 1082,
+              "segments": 100000,
+              "trials_ns": [
+                34279400,
+                34591900,
+                36276800,
+                35897600,
+                35692900,
+                37061400,
+                37217200
+              ],
+              "workload": "samples_30s"
+            },
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 21800799,
+              "allocations": 500000,
+              "checkpoints": 100000,
+              "duration_secs": 2999971,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 33224800,
+              "ns_per_observation": 332.248,
+              "observation_size_bytes": 128,
+              "output_digest": "10939079030382735783",
+              "overlap": false,
+              "peak_extra_live_bytes": 1082,
+              "segments": 100000,
+              "trials_ns": [
+                33807000,
+                32637400,
+                33623700,
+                33570900,
+                32875500,
+                32827300,
+                33224800
+              ],
+              "workload": "samples_30s"
+            },
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 21800799,
+              "allocations": 500000,
+              "checkpoints": 100000,
+              "duration_secs": 2999971,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 34444500,
+              "ns_per_observation": 344.445,
+              "observation_size_bytes": 128,
+              "output_digest": "10939079030382735783",
+              "overlap": false,
+              "peak_extra_live_bytes": 1082,
+              "segments": 100000,
+              "trials_ns": [
+                35212000,
+                35426500,
+                34174200,
+                34808800,
+                33949900,
+                34417800,
+                34444500
+              ],
+              "workload": "samples_30s"
+            }
+          ]
+        },
+        "after": {
+          "median_ms": 34.578599999999994,
+          "trials": 28,
+          "raw_rows": [
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 21800799,
+              "allocations": 500000,
+              "checkpoints": 100000,
+              "duration_secs": 2999971,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 34324000,
+              "ns_per_observation": 343.24,
+              "observation_size_bytes": 128,
+              "output_digest": "10939079030382735783",
+              "overlap": false,
+              "peak_extra_live_bytes": 1082,
+              "segments": 100000,
+              "trials_ns": [
+                33398900,
+                34291000,
+                34324000,
+                34409600,
+                35165600,
+                34341000,
+                33833000
+              ],
+              "workload": "samples_30s"
+            },
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 21800799,
+              "allocations": 500000,
+              "checkpoints": 100000,
+              "duration_secs": 2999971,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 35242800,
+              "ns_per_observation": 352.428,
+              "observation_size_bytes": 128,
+              "output_digest": "10939079030382735783",
+              "overlap": false,
+              "peak_extra_live_bytes": 1082,
+              "segments": 100000,
+              "trials_ns": [
+                35398300,
+                34747600,
+                35242800,
+                34910500,
+                35465700,
+                34033900,
+                35336000
+              ],
+              "workload": "samples_30s"
+            },
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 21800799,
+              "allocations": 500000,
+              "checkpoints": 100000,
+              "duration_secs": 2999971,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 34996200,
+              "ns_per_observation": 349.962,
+              "observation_size_bytes": 128,
+              "output_digest": "10939079030382735783",
+              "overlap": false,
+              "peak_extra_live_bytes": 1082,
+              "segments": 100000,
+              "trials_ns": [
+                35027600,
+                34926900,
+                34996200,
+                35136900,
+                34853400,
+                35655200,
+                34799000
+              ],
+              "workload": "samples_30s"
+            },
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 21800799,
+              "allocations": 500000,
+              "checkpoints": 100000,
+              "duration_secs": 2999971,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 33556400,
+              "ns_per_observation": 335.564,
+              "observation_size_bytes": 128,
+              "output_digest": "10939079030382735783",
+              "overlap": false,
+              "peak_extra_live_bytes": 1082,
+              "segments": 100000,
+              "trials_ns": [
+                33572500,
+                33263900,
+                33768300,
+                33556400,
+                33970600,
+                33121300,
+                33353300
+              ],
+              "workload": "samples_30s"
+            }
+          ]
+        }
+      },
+      "median_change_percent": 2.0186225453171946
+    },
+    {
+      "scenario": "foreground_every_2s",
+      "versions": {
+        "before": {
+          "median_ms": 26.5649,
+          "trials": 28,
+          "raw_rows": [
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 15307545,
+              "allocations": 306668,
+              "checkpoints": 6668,
+              "duration_secs": 199999,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 26489500,
+              "ns_per_observation": 264.895,
+              "observation_size_bytes": 128,
+              "output_digest": "1585360577014344622",
+              "overlap": false,
+              "peak_extra_live_bytes": 1085,
+              "segments": 93334,
+              "trials_ns": [
+                26489500,
+                27089800,
+                26430500,
+                26167000,
+                26249400,
+                26519100,
+                27213200
+              ],
+              "workload": "foreground_every_2s"
+            },
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 15307545,
+              "allocations": 306668,
+              "checkpoints": 6668,
+              "duration_secs": 199999,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 26784400,
+              "ns_per_observation": 267.844,
+              "observation_size_bytes": 128,
+              "output_digest": "1585360577014344622",
+              "overlap": false,
+              "peak_extra_live_bytes": 1085,
+              "segments": 93334,
+              "trials_ns": [
+                29631300,
+                29289200,
+                27598400,
+                26784400,
+                26016600,
+                26359800,
+                26407500
+              ],
+              "workload": "foreground_every_2s"
+            },
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 15307545,
+              "allocations": 306668,
+              "checkpoints": 6668,
+              "duration_secs": 199999,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 26436600,
+              "ns_per_observation": 264.366,
+              "observation_size_bytes": 128,
+              "output_digest": "1585360577014344622",
+              "overlap": false,
+              "peak_extra_live_bytes": 1085,
+              "segments": 93334,
+              "trials_ns": [
+                26140800,
+                26505900,
+                26885400,
+                28152400,
+                26436600,
+                26120000,
+                26039600
+              ],
+              "workload": "foreground_every_2s"
+            },
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 15307545,
+              "allocations": 306668,
+              "checkpoints": 6668,
+              "duration_secs": 199999,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 27411100,
+              "ns_per_observation": 274.111,
+              "observation_size_bytes": 128,
+              "output_digest": "1585360577014344622",
+              "overlap": false,
+              "peak_extra_live_bytes": 1085,
+              "segments": 93334,
+              "trials_ns": [
+                26610700,
+                27545100,
+                26190700,
+                27114100,
+                29438400,
+                34736300,
+                27411100
+              ],
+              "workload": "foreground_every_2s"
+            }
+          ]
+        },
+        "after": {
+          "median_ms": 27.007649999999998,
+          "trials": 28,
+          "raw_rows": [
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 15307545,
+              "allocations": 306668,
+              "checkpoints": 6668,
+              "duration_secs": 199999,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 25978600,
+              "ns_per_observation": 259.786,
+              "observation_size_bytes": 128,
+              "output_digest": "1585360577014344622",
+              "overlap": false,
+              "peak_extra_live_bytes": 1085,
+              "segments": 93334,
+              "trials_ns": [
+                27036500,
+                25643000,
+                25978600,
+                25899600,
+                26633200,
+                26295700,
+                25703400
+              ],
+              "workload": "foreground_every_2s"
+            },
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 15307545,
+              "allocations": 306668,
+              "checkpoints": 6668,
+              "duration_secs": 199999,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 27085700,
+              "ns_per_observation": 270.857,
+              "observation_size_bytes": 128,
+              "output_digest": "1585360577014344622",
+              "overlap": false,
+              "peak_extra_live_bytes": 1085,
+              "segments": 93334,
+              "trials_ns": [
+                27441000,
+                26787700,
+                26922000,
+                27085700,
+                27119300,
+                27607700,
+                26620700
+              ],
+              "workload": "foreground_every_2s"
+            },
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 15307545,
+              "allocations": 306668,
+              "checkpoints": 6668,
+              "duration_secs": 199999,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 27589300,
+              "ns_per_observation": 275.893,
+              "observation_size_bytes": 128,
+              "output_digest": "1585360577014344622",
+              "overlap": false,
+              "peak_extra_live_bytes": 1085,
+              "segments": 93334,
+              "trials_ns": [
+                27504400,
+                27635800,
+                27021000,
+                27315100,
+                27589300,
+                27808100,
+                28292400
+              ],
+              "workload": "foreground_every_2s"
+            },
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 15307545,
+              "allocations": 306668,
+              "checkpoints": 6668,
+              "duration_secs": 199999,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 3,
+              "median_ns": 26802300,
+              "ns_per_observation": 268.023,
+              "observation_size_bytes": 128,
+              "output_digest": "1585360577014344622",
+              "overlap": false,
+              "peak_extra_live_bytes": 1085,
+              "segments": 93334,
+              "trials_ns": [
+                26802300,
+                26564500,
+                27241400,
+                26994300,
+                26362900,
+                27098500,
+                26576300
+              ],
+              "workload": "foreground_every_2s"
+            }
+          ]
+        }
+      },
+      "median_change_percent": 1.6666729406095815
+    },
+    {
+      "scenario": "titles_4_per_second",
+      "versions": {
+        "before": {
+          "median_ms": 35.1276,
+          "trials": 28,
+          "raw_rows": [
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 21059707,
+              "allocations": 327503,
+              "checkpoints": 835,
+              "duration_secs": 25000,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 10,
+              "median_ns": 34701600,
+              "ns_per_observation": 347.016,
+              "observation_size_bytes": 128,
+              "output_digest": "9489603525843701138",
+              "overlap": false,
+              "peak_extra_live_bytes": 4006,
+              "segments": 25000,
+              "trials_ns": [
+                35687200,
+                34778100,
+                34701600,
+                33970300,
+                36318900,
+                33422800,
+                34445800
+              ],
+              "workload": "titles_4_per_second"
+            },
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 21059707,
+              "allocations": 327503,
+              "checkpoints": 835,
+              "duration_secs": 25000,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 10,
+              "median_ns": 36717100,
+              "ns_per_observation": 367.171,
+              "observation_size_bytes": 128,
+              "output_digest": "9489603525843701138",
+              "overlap": false,
+              "peak_extra_live_bytes": 4006,
+              "segments": 25000,
+              "trials_ns": [
+                34846300,
+                36417500,
+                37189700,
+                36717100,
+                36175300,
+                36999600,
+                37220800
+              ],
+              "workload": "titles_4_per_second"
+            },
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 21059707,
+              "allocations": 327503,
+              "checkpoints": 835,
+              "duration_secs": 25000,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 10,
+              "median_ns": 34985900,
+              "ns_per_observation": 349.859,
+              "observation_size_bytes": 128,
+              "output_digest": "9489603525843701138",
+              "overlap": false,
+              "peak_extra_live_bytes": 4006,
+              "segments": 25000,
+              "trials_ns": [
+                34273200,
+                36334800,
+                34976000,
+                35269300,
+                34601900,
+                35345400,
+                34985900
+              ],
+              "workload": "titles_4_per_second"
+            },
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 21059707,
+              "allocations": 327503,
+              "checkpoints": 835,
+              "duration_secs": 25000,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 10,
+              "median_ns": 34908500,
+              "ns_per_observation": 349.085,
+              "observation_size_bytes": 128,
+              "output_digest": "9489603525843701138",
+              "overlap": false,
+              "peak_extra_live_bytes": 4006,
+              "segments": 25000,
+              "trials_ns": [
+                35350000,
+                35522700,
+                34362700,
+                35706600,
+                33712600,
+                34908500,
+                34483800
+              ],
+              "workload": "titles_4_per_second"
+            }
+          ]
+        },
+        "after": {
+          "median_ms": 35.5697,
+          "trials": 28,
+          "raw_rows": [
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 21059707,
+              "allocations": 327503,
+              "checkpoints": 835,
+              "duration_secs": 25000,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 10,
+              "median_ns": 34742400,
+              "ns_per_observation": 347.424,
+              "observation_size_bytes": 128,
+              "output_digest": "9489603525843701138",
+              "overlap": false,
+              "peak_extra_live_bytes": 4006,
+              "segments": 25000,
+              "trials_ns": [
+                34514000,
+                34913500,
+                34742400,
+                34529600,
+                34164800,
+                35280100,
+                34766200
+              ],
+              "workload": "titles_4_per_second"
+            },
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 21059707,
+              "allocations": 327503,
+              "checkpoints": 835,
+              "duration_secs": 25000,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 10,
+              "median_ns": 37798200,
+              "ns_per_observation": 377.982,
+              "observation_size_bytes": 128,
+              "output_digest": "9489603525843701138",
+              "overlap": false,
+              "peak_extra_live_bytes": 4006,
+              "segments": 25000,
+              "trials_ns": [
+                37798200,
+                36902700,
+                37016400,
+                35717800,
+                40860800,
+                42192300,
+                40671600
+              ],
+              "workload": "titles_4_per_second"
+            },
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 21059707,
+              "allocations": 327503,
+              "checkpoints": 835,
+              "duration_secs": 25000,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 10,
+              "median_ns": 35094700,
+              "ns_per_observation": 350.947,
+              "observation_size_bytes": 128,
+              "output_digest": "9489603525843701138",
+              "overlap": false,
+              "peak_extra_live_bytes": 4006,
+              "segments": 25000,
+              "trials_ns": [
+                35214700,
+                35073100,
+                34895800,
+                34957800,
+                35094700,
+                35621400,
+                36065000
+              ],
+              "workload": "titles_4_per_second"
+            },
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 21059707,
+              "allocations": 327503,
+              "checkpoints": 835,
+              "duration_secs": 25000,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 10,
+              "median_ns": 35801400,
+              "ns_per_observation": 358.014,
+              "observation_size_bytes": 128,
+              "output_digest": "9489603525843701138",
+              "overlap": false,
+              "peak_extra_live_bytes": 4006,
+              "segments": 25000,
+              "trials_ns": [
+                36238200,
+                35523300,
+                34851400,
+                36886900,
+                35616100,
+                36299700,
+                35801400
+              ],
+              "workload": "titles_4_per_second"
+            }
+          ]
+        }
+      },
+      "median_change_percent": 1.2585545269246934
+    },
+    {
+      "scenario": "burst_400_per_second_ordered",
+      "versions": {
+        "before": {
+          "median_ms": 23.2913,
+          "trials": 28,
+          "raw_rows": [
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 802,
+              "median_ns": 23133600,
+              "ns_per_observation": 231.336,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                24115800,
+                24780200,
+                23605700,
+                22908200,
+                21944700,
+                23133600,
+                22245900
+              ],
+              "workload": "burst_400_per_second_ordered"
+            },
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 802,
+              "median_ns": 22701100,
+              "ns_per_observation": 227.011,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                24379500,
+                22701100,
+                22446400,
+                22822100,
+                22786500,
+                22211200,
+                22600700
+              ],
+              "workload": "burst_400_per_second_ordered"
+            },
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 802,
+              "median_ns": 23256300,
+              "ns_per_observation": 232.563,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                22812100,
+                23677000,
+                23383400,
+                22902000,
+                23256300,
+                23147600,
+                23326300
+              ],
+              "workload": "burst_400_per_second_ordered"
+            },
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 802,
+              "median_ns": 23742500,
+              "ns_per_observation": 237.425,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                23742500,
+                24194200,
+                23986200,
+                23699400,
+                23650500,
+                23625400,
+                24457500
+              ],
+              "workload": "burst_400_per_second_ordered"
+            }
+          ]
+        },
+        "after": {
+          "median_ms": 24.40565,
+          "trials": 28,
+          "raw_rows": [
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 802,
+              "median_ns": 32387900,
+              "ns_per_observation": 323.879,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                28821100,
+                40572800,
+                44007100,
+                53969100,
+                32387900,
+                28132200,
+                31145200
+              ],
+              "workload": "burst_400_per_second_ordered"
+            },
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 802,
+              "median_ns": 24739100,
+              "ns_per_observation": 247.391,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                24177000,
+                23413200,
+                24739100,
+                23999800,
+                26305300,
+                27104300,
+                27507200
+              ],
+              "workload": "burst_400_per_second_ordered"
+            },
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 802,
+              "median_ns": 24044500,
+              "ns_per_observation": 240.445,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                23567400,
+                23910400,
+                24044500,
+                24316000,
+                24250700,
+                24236300,
+                23756900
+              ],
+              "workload": "burst_400_per_second_ordered"
+            },
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 802,
+              "median_ns": 24402600,
+              "ns_per_observation": 244.026,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                24599400,
+                24714800,
+                23405200,
+                24408700,
+                24402600,
+                24027900,
+                24183600
+              ],
+              "workload": "burst_400_per_second_ordered"
+            }
+          ]
+        }
+      },
+      "median_change_percent": 4.784404477208226
+    },
+    {
+      "scenario": "burst_400_per_second_reordered",
+      "versions": {
+        "before": {
+          "median_ms": 34.55935,
+          "trials": 28,
+          "raw_rows": [
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 865,
+              "median_ns": 34542900,
+              "ns_per_observation": 345.429,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                34575800,
+                35058500,
+                34655600,
+                33726800,
+                34166000,
+                33677600,
+                34542900
+              ],
+              "workload": "burst_400_per_second_reordered"
+            },
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 865,
+              "median_ns": 33679700,
+              "ns_per_observation": 336.797,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                32820100,
+                33457700,
+                32858700,
+                33679700,
+                33700900,
+                34191300,
+                33799200
+              ],
+              "workload": "burst_400_per_second_reordered"
+            },
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 865,
+              "median_ns": 34694200,
+              "ns_per_observation": 346.942,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                33851100,
+                35658300,
+                34309200,
+                34891400,
+                34694200,
+                35658200,
+                34077200
+              ],
+              "workload": "burst_400_per_second_reordered"
+            },
+            {
+              "accounting_size_bytes": 312,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 865,
+              "median_ns": 35382300,
+              "ns_per_observation": 353.823,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                34890500,
+                35868000,
+                35152600,
+                36178000,
+                35018700,
+                35837100,
+                35382300
+              ],
+              "workload": "burst_400_per_second_reordered"
+            }
+          ]
+        },
+        "after": {
+          "median_ms": 37.1952,
+          "trials": 28,
+          "raw_rows": [
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 865,
+              "median_ns": 42429600,
+              "ns_per_observation": 424.296,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                41100700,
+                42695600,
+                45794500,
+                43569400,
+                42429600,
+                39891700,
+                37235200
+              ],
+              "workload": "burst_400_per_second_reordered"
+            },
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 865,
+              "median_ns": 37503300,
+              "ns_per_observation": 375.033,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                38569300,
+                37089600,
+                37503300,
+                37226300,
+                36645900,
+                37660700,
+                39504500
+              ],
+              "workload": "burst_400_per_second_reordered"
+            },
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 865,
+              "median_ns": 36672900,
+              "ns_per_observation": 366.729,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                37133400,
+                37164100,
+                36672900,
+                36046900,
+                35564400,
+                36797600,
+                35566100
+              ],
+              "workload": "burst_400_per_second_reordered"
+            },
+            {
+              "accounting_size_bytes": 424,
+              "allocated_bytes": 6951663,
+              "allocations": 200758,
+              "checkpoints": 249,
+              "duration_secs": 250,
+              "events": 100000,
+              "gaps": 0,
+              "max_pending_bound": 865,
+              "median_ns": 36329300,
+              "ns_per_observation": 363.293,
+              "observation_size_bytes": 128,
+              "output_digest": "1378179610809119010",
+              "overlap": false,
+              "peak_extra_live_bytes": 184502,
+              "segments": 250,
+              "trials_ns": [
+                37269700,
+                36133400,
+                36329300,
+                35723500,
+                36924900,
+                35661000,
+                37431900
+              ],
+              "workload": "burst_400_per_second_reordered"
+            }
+          ]
+        }
+      },
+      "median_change_percent": 7.627024235120161
+    }
+  ],
+  "log": [
+    {
+      "scenario": "read",
+      "versions": {
+        "before": {
+          "median_ms": 6.66445,
+          "trials": 14,
+          "raw_rows": [
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6524.8,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 1,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6902.6,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 2,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6784.6,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 3,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6728.4,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 4,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6773.0,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 5,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6625.9,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 6,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6687.5,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 7,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6391.7,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 1,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6495.2,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 2,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6641.400000000001,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 3,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6591.2,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 4,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 7254.0,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 5,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6538.099999999999,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 6,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6760.6,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 7,
+              "scenario": "read"
+            }
+          ]
+        },
+        "after": {
+          "median_ms": 6.487299999999999,
+          "trials": 14,
+          "raw_rows": [
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6868.5,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 1,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6621.700000000001,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 2,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6930.900000000001,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 3,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6584.2,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 4,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6787.7,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 5,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6498.099999999999,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 6,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6501.200000000001,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 7,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6276.2,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 1,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6338.400000000001,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 2,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6217.0,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 3,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6291.599999999999,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 4,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6407.7,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 5,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6476.5,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 6,
+              "scenario": "read"
+            },
+            {
+              "allocated_bytes": 2629710,
+              "allocations": 15,
+              "digest": "16749603877434818560",
+              "elapsed_us": 6458.8,
+              "peak_heap_growth": 1319488,
+              "records": 65536,
+              "round": 7,
+              "scenario": "read"
+            }
+          ]
+        }
+      },
+      "median_change_percent": -2.6581338294983214
+    },
+    {
+      "scenario": "query",
+      "versions": {
+        "before": {
+          "median_ms": 8.2539,
+          "trials": 14,
+          "raw_rows": [
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8089.499999999999,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 1,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8215.3,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 2,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8292.5,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 3,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8903.8,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 4,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8426.0,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 5,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8361.300000000001,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 6,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8930.4,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 7,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8089.000000000001,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 1,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8309.1,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 2,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8007.6,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 3,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 7725.1,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 4,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8310.1,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 5,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 7760.8,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 6,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8135.099999999999,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 7,
+              "scenario": "query"
+            }
+          ]
+        },
+        "after": {
+          "median_ms": 8.08165,
+          "trials": 14,
+          "raw_rows": [
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8442.4,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 1,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8228.3,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 2,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8766.9,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 3,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8309.5,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 4,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8086.5,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 5,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8113.3,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 6,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8076.8,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 7,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 7743.3,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 1,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 7626.400000000001,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 2,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 7622.7,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 3,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 7495.5,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 4,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 7933.400000000001,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 5,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 8312.4,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 6,
+              "scenario": "query"
+            },
+            {
+              "allocated_bytes": 11543779,
+              "allocations": 56,
+              "digest": "16749603877434818560",
+              "elapsed_us": 7978.000000000001,
+              "peak_heap_growth": 4194446,
+              "records": 65536,
+              "round": 7,
+              "scenario": "query"
+            }
+          ]
+        }
+      },
+      "median_change_percent": -2.0868922569936665
+    },
+    {
+      "scenario": "reopen",
+      "versions": {
+        "before": {
+          "median_ms": 5.916649999999999,
+          "trials": 14,
+          "raw_rows": [
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5661.0,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 1,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5723.7,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 2,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 6011.8,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 3,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 6174.200000000001,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 4,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 6240.5,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 5,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 6010.7,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 6,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 6536.1,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 7,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5816.5,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 1,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5778.400000000001,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 2,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5938.599999999999,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 3,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5627.6,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 4,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 6265.200000000001,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 5,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5719.2,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 6,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5894.7,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 7,
+              "scenario": "reopen"
+            }
+          ]
+        },
+        "after": {
+          "median_ms": 5.894349999999999,
+          "trials": 14,
+          "raw_rows": [
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5872.900000000001,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 1,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5863.6,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 2,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 6001.3,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 3,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5837.099999999999,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 4,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5715.5,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 5,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5779.6,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 6,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5915.799999999999,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 7,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 6041.4,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 1,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5830.5,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 2,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 6013.0,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 3,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5771.5,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 4,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 6079.6,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 5,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 5943.3,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 6,
+              "scenario": "reopen"
+            },
+            {
+              "allocated_bytes": 9677,
+              "allocations": 15,
+              "digest": "0",
+              "elapsed_us": 6180.0,
+              "peak_heap_growth": 9038,
+              "records": 65536,
+              "round": 7,
+              "scenario": "reopen"
+            }
+          ]
+        }
+      },
+      "median_change_percent": -0.37690247014779965
+    },
+    {
+      "scenario": "writer_startup",
+      "versions": {
+        "before": {
+          "median_ms": 9.62605,
+          "trials": 14,
+          "raw_rows": [
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 17891.0,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 1,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 9535.5,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 2,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 9853.6,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 3,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 9162.3,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 4,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 9363.0,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 5,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 9418.0,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 6,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 9427.9,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 7,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 17120.199999999997,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 1,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 9579.6,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 2,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 9868.800000000001,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 3,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 12017.800000000001,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 4,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 9443.800000000001,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 5,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 17988.5,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 6,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 9672.5,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 7,
+              "scenario": "writer_startup"
+            }
+          ]
+        },
+        "after": {
+          "median_ms": 10.713,
+          "trials": 14,
+          "raw_rows": [
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 14573.4,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 1,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 9620.3,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 2,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 9090.900000000001,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 3,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 12277.5,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 4,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 12175.5,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 5,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 16564.0,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 6,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 15727.600000000002,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 7,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 17214.7,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 1,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 8463.2,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 2,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 8750.7,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 3,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 9326.3,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 4,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 8808.2,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 5,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 9319.7,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 6,
+              "scenario": "writer_startup"
+            },
+            {
+              "allocated_bytes": 40877,
+              "allocations": 89,
+              "digest": "0",
+              "elapsed_us": 11805.7,
+              "peak_heap_growth": 13575,
+              "records": 65536,
+              "round": 7,
+              "scenario": "writer_startup"
+            }
+          ]
+        }
+      },
+      "median_change_percent": 11.291755185148622
+    }
+  ],
+  "method": {
+    "accounting": "two old/new/new/old series, all 28 timed trials per version/workload retained; first series showed a noisy after run; 100000 observations per workload; allocation and full digest pass untimed",
+    "log": "one old/new/new/old series, 14 trials per version/scenario; 65536 records, 1 application and 1 title in hot-cache fixture; includes dictionary loading and startup synchronization",
+    "excluded": "desktop CPU/RSS, actual shutdown/sleep and service installation/uninstallation; no benchmark implies full-process CPU improvement"
+  }
+}

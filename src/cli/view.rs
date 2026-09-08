@@ -10,7 +10,7 @@ use lexopt::prelude::*;
 use crate::local_time::{Calendar, SystemCalendar};
 use crate::paths::AppPaths;
 use crate::storage::crypto::{load_or_create_master_key, Cipher};
-use crate::storage::dict::Dict;
+use crate::storage::dict::DictReader;
 use crate::storage::query::{validate_query_day_count, visit_local_date_range};
 use crate::storage::writer::now_unix;
 
@@ -73,7 +73,7 @@ pub fn run(args: ViewArgs, paths: &AppPaths, machine_scope: bool) -> std::io::Re
 
     let key = load_or_create_master_key(&paths.key_file, machine_scope)?;
     let cipher = Cipher::new(&key);
-    let apps = Dict::open(&paths.apps_dict)?;
+    let mut apps = DictReader::open(&paths.apps_dict)?;
 
     let mut day_totals: Vec<(NaiveDate, HashMap<String, u64>)> = calendar_dates(from, today)?
         .into_iter()
@@ -81,8 +81,11 @@ pub fn run(args: ViewArgs, paths: &AppPaths, machine_scope: bool) -> std::io::Re
         .collect();
     let mut by_app_total: HashMap<String, u64> = HashMap::new();
 
-    visit_local_date_range(paths, &cipher, &calendar, from, today, |r| {
-        let exe = apps.get(r.app_id).unwrap_or("?");
+    let quality = visit_local_date_range(paths, &cipher, &calendar, from, today, |r| {
+        if r.is_gap() {
+            return Ok(());
+        }
+        let exe = apps.resolve(r.app_id)?;
         let name = display_app(exe);
         let day_index = r.local_date.signed_duration_since(from).num_days();
         let day_index = usize::try_from(day_index).map_err(|_| {
@@ -107,16 +110,24 @@ pub fn run(args: ViewArgs, paths: &AppPaths, machine_scope: bool) -> std::io::Re
         .map(|(date, totals)| {
             let day_total: u64 = totals.values().sum();
             let mut rows: Vec<_> = totals.into_iter().collect();
-            rows.sort_by(|a, b| b.1.cmp(&a.1));
+            rows.sort_by_key(|row| std::cmp::Reverse(row.1));
             (date, rows, day_total)
         })
         .collect();
 
     let mut overall: Vec<_> = by_app_total.into_iter().collect();
-    overall.sort_by(|a, b| b.1.cmp(&a.1));
+    overall.sort_by_key(|row| std::cmp::Reverse(row.1));
     let overall_total: u64 = overall.iter().map(|(_, v)| *v).sum();
 
-    let html = render_html(&overall, overall_total, &by_day, days, &paths.root);
+    let mut html = render_html(&overall, overall_total, &by_day, days, &paths.root);
+    if let Some(warning) = quality.warning() {
+        let notice = format!("<div class=\"card\" role=\"status\"><h2>记录不完整 / Incomplete capture</h2><p>{}</p></div>", html_escape(&warning));
+        html = html.replacen(
+            "<h1>RustTimeNoter</h1>",
+            &format!("<h1>RustTimeNoter</h1>{notice}"),
+            1,
+        );
+    }
 
     let out_path = match args.out.clone() {
         Some(p) => p,

@@ -16,13 +16,23 @@ pub struct Segment {
     pub end_unix: u64,
 }
 
+/// A known interval of unreliable capture, excluded from application totals.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Gap {
+    pub start_unix: u64,
+    pub end_unix: u64,
+}
+
+/// v1 reserves flags and dictionary ID zero, so gaps need no data migration.
+pub const RECORD_FLAG_GAP: u8 = 0x80;
+
 impl Segment {
     pub fn duration(&self) -> u64 {
         self.end_unix.saturating_sub(self.start_unix)
     }
 }
 
-/// 落盘后的扁平记录（单日内偏移）。15 字节定长。
+/// 落盘后的扁平记录（单日内偏移）。17 字节定长。
 ///
 /// 字段编码（小端）：
 /// - `start_offset_secs`: u32 (相对当日 UTC 00:00 的秒数)
