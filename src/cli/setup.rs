@@ -10,12 +10,16 @@ use std::path::PathBuf;
 
 use crate::cli::install::{install, InstallArgs, Mode};
 use crate::cli::view::{self, ViewArgs};
+use crate::config::Config;
 use crate::paths::{AppPaths, InstallScope};
 
 pub fn run() -> std::io::Result<()> {
     println!("=== RustTimeNoter setup ===");
 
     let paths = AppPaths::for_scope(InstallScope::User)?;
+    // Reject invalid configuration before replacing the binary or registering
+    // autostart. The daemon loads it again when its process starts.
+    Config::load(&paths.config_file)?;
     paths.ensure_dirs()?;
 
     // 1+2: install autostart (该函数会复制自身到 bin_dir 并写注册表)

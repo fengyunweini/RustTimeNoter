@@ -61,7 +61,10 @@ pub fn run(scope: InstallScope) -> io::Result<()> {
         })?;
     if let Err(error) = flush_and_wait(&writer_tx) {
         let _ = send_until(&writer_tx, WriterMsg::Shutdown);
-        let _ = join_until(writer, "writer");
+        // An initialization failure drops the ACK sender before it can reply.
+        // Preserve the writer's actual storage error (and its OS error code),
+        // using the ACK error only if the writer itself completed successfully.
+        join_until(writer, "writer")?;
         return Err(error);
     }
     if hook::shutdown_requested() {
@@ -414,7 +417,10 @@ fn flush_and_wait(writer: &SyncSender<WriterMsg>) -> io::Result<()> {
         Ok(Ok(())) => Ok(()),
         Ok(Err(error)) => Err(io::Error::other(error)),
         Err(error) => Err(io::Error::new(
-            io::ErrorKind::TimedOut,
+            match error {
+                RecvTimeoutError::Timeout => io::ErrorKind::TimedOut,
+                RecvTimeoutError::Disconnected => io::ErrorKind::BrokenPipe,
+            },
             format!("durable write not confirmed: {error}"),
         )),
     }
@@ -902,5 +908,22 @@ mod tests {
         assert!(emit(&tx, corrected_output()).is_err());
         drop(tx);
         worker.join().unwrap();
+    }
+
+    #[test]
+    fn a_disconnected_durability_ack_is_not_a_timeout() {
+        let (tx, rx) = mpsc::sync_channel(1);
+        let worker = thread::spawn(move || {
+            let WriterMsg::FlushAndAck(ack) = rx.recv().unwrap() else {
+                panic!("missing durability request")
+            };
+            // Receive the request first so this exercises ACK disconnection,
+            // rather than the separate failure to send to a stopped worker.
+            drop(ack);
+        });
+        let error = flush_and_wait(&tx).unwrap_err();
+        worker.join().unwrap();
+        assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+        assert!(error.to_string().contains("durable write not confirmed"));
     }
 }

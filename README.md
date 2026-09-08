@@ -199,6 +199,9 @@ bin\tracker.exe        Autostart binary copy
   a bad header or unverifiable first block in any historical day also prevents startup.
   Existing keys and dictionaries must be writable for startup synchronization. Linked/reparse data
   directories and log files are rejected so that historical references cannot silently escape the scan.
+- Startup preserves the writer's original storage error: `tracker run` prints it to the console,
+  and no-argument background startup records it in `crash.log` in the data directory.
+  See the [startup error review](docs/startup-review.md). `setup` validates configuration before installing.
 - Existing v1 activity files remain readable. Older binaries do not understand gaps or continuation parts;
   use this version for queries once either appears, and retain the complete data directory when backing up.
 
