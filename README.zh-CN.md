@@ -227,6 +227,9 @@ bin\tracker.exe        autostart 模式下的二进制副本
 
 需要 Rust 1.91+ 和 Windows 10 / 11。
 
+CI 与正式发布使用 Rust 1.97.1 和锁定依赖。参见
+[发布流程](docs/releasing.md)及 [v0.2.0 发布说明](docs/releases/v0.2.0.md)。
+
 ```powershell
 cargo build --release   # → target\release\tracker.exe
 cargo test --all-targets

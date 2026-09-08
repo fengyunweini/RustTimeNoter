@@ -245,6 +245,9 @@ bin\tracker.exe        Autostart binary copy
 
 Requires Rust 1.91+ and Windows 10 or 11.
 
+CI and release builds use Rust 1.97.1 with locked dependencies. See the
+[release procedure](docs/releasing.md) and [v0.2.0 release notes](docs/releases/v0.2.0.md).
+
 ```powershell
 cargo build --release   # → target\release\tracker.exe
 cargo test --all-targets

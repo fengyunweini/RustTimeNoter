@@ -7,11 +7,11 @@
 //! - `query`：按本地日历范围读取 UTC 分片。
 //! - `model`：跨模块共享数据结构。
 
-pub mod model;
-pub mod dict;
 pub mod crypto;
+pub mod dict;
 pub mod log;
-pub mod writer;
+pub mod model;
 pub mod query;
+pub mod writer;
 
-pub use model::{Segment, Record};
+pub use model::{Record, Segment};

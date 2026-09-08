@@ -396,28 +396,60 @@ mod tests {
 
     #[test]
     fn queued_or_failed_shutdown_never_joins_a_stalled_tray_thread() {
+        let watchdog = Duration::from_secs(5);
         for signal_delivered in [false, true] {
+            let (ready_tx, ready_rx) = mpsc::channel();
             let (release_tx, release_rx) = mpsc::channel();
             let (exited_tx, exited_rx) = mpsc::channel();
             let tray_thread = std::thread::spawn(move || {
                 // A queued message cannot interrupt an in-progress callback.
+                ready_tx.send(()).unwrap();
                 release_rx.recv().unwrap();
                 exited_tx.send(()).unwrap();
             });
+            let tray_ready = ready_rx.recv_timeout(watchdog).is_ok();
+            let (started_tx, started_rx) = mpsc::channel();
             let (returned_tx, returned_rx) = mpsc::channel();
             let shutdown = std::thread::spawn(move || {
+                started_tx.send(()).unwrap();
                 finish_tray_thread(tray_thread, signal_delivered);
                 returned_tx.send(()).unwrap();
             });
 
-            let returned_without_joining = returned_rx.recv_timeout(Duration::from_secs(1)).is_ok();
-            // Release even on failure so a regression cannot hang the suite.
-            release_tx.send(()).unwrap();
-            shutdown.join().unwrap();
-            exited_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+            // Thread creation/scheduling is not part of the cleanup deadline.
+            // The watchdog allows a busy test runner to schedule both workers;
+            // the contract is return while the callback remains blocked.
+            let shutdown_started = started_rx.recv_timeout(watchdog).is_ok();
+            let returned_without_joining =
+                shutdown_started && returned_rx.recv_timeout(watchdog).is_ok();
+            let tray_still_blocked = matches!(exited_rx.try_recv(), Err(mpsc::TryRecvError::Empty));
+
+            // Always release before asserting, even if shutdown incorrectly
+            // joined the worker. Cleanup itself also has a bounded watchdog.
+            let released = release_tx.send(()).is_ok();
+            let tray_exited = exited_rx.recv_timeout(watchdog).is_ok();
+            let deadline = Instant::now() + watchdog;
+            while !shutdown.is_finished() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            let shutdown_finished = shutdown.is_finished() && shutdown.join().is_ok();
+            assert!(tray_ready, "tray worker was not scheduled");
+            assert!(shutdown_started, "shutdown worker was not scheduled");
             assert!(
                 returned_without_joining,
                 "signal_delivered={signal_delivered}"
+            );
+            assert!(
+                tray_still_blocked,
+                "tray exited before the test released it"
+            );
+            assert!(
+                released && tray_exited,
+                "tray worker did not exit after release"
+            );
+            assert!(
+                shutdown_finished,
+                "shutdown worker did not finish after release"
             );
         }
     }
