@@ -372,6 +372,18 @@ impl Accounting {
         output
     }
 
+    /// A capture that cannot settle may hide a transition anywhere in this
+    /// session, including before the consumer thread first ran.
+    pub fn invalidate_session(&mut self, fallback_start: TimePoint, to: TimePoint) -> Output {
+        // The mapping anchor survives checkpoints and state resets. Keep the
+        // fallback too: no observation may have established an anchor yet.
+        let from = self
+            .wall_anchor
+            .filter(|anchor| anchor.monotonic < fallback_start.monotonic)
+            .unwrap_or(fallback_start);
+        self.invalidate(from, to)
+    }
+
     /// Called once after producers stop. Drain the remaining tail in order and
     /// close it at shutdown; repeated shutdown calls cannot write duplicates.
     pub fn finish(&mut self, at: TimePoint, last_input: Option<MonoTime>) -> Output {
@@ -1868,6 +1880,63 @@ mod tests {
             (invalidated.gaps[0].start_unix, invalidated.gaps[0].end_unix),
             (1_004, 1_010)
         );
+    }
+
+    #[test]
+    fn unsettled_capture_covers_activity_before_delayed_consumer_start() {
+        for checkpoint in [false, true] {
+            let mut accounting = Accounting::new(300);
+            // Main published A before the consumer was scheduled at t=3.
+            accounting.push(sample("a", 0, 0));
+            let mut out = accounting.drain_ready(mono(3));
+            if checkpoint {
+                accounting.push(sample("a", 2, 2));
+                out.extend(accounting.drain_ready(mono(4)));
+                assert_eq!(ranges(&out), vec![("a", 0, 2)]);
+            }
+            // An admitted B@1 callback is still stuck at shutdown. A final
+            // A snapshot cannot expose the intervening A -> B -> A switch.
+            accounting.push(sample("a", 4, 4));
+            out.extend(accounting.invalidate_session(at(3), at(4)));
+            out.extend(accounting.finish(at(4), Some(mono(4))));
+            assert_eq!(
+                out.gaps,
+                vec![Gap {
+                    start_unix: 1000,
+                    end_unix: 1004,
+                }],
+                "checkpoint={checkpoint}"
+            );
+            assert!(out
+                .segments
+                .iter()
+                .all(|segment| out.gaps.iter().any(|gap| {
+                    gap.start_unix <= segment.start_unix && gap.end_unix >= segment.end_unix
+                })));
+            assert!(accounting.invalidate_session(at(0), at(5)).is_empty());
+        }
+    }
+
+    #[test]
+    fn unsettled_capture_keeps_earlier_fallback_and_pending_boundaries() {
+        for state in 0..3 {
+            let mut accounting = Accounting::new(300);
+            if state == 1 {
+                accounting.push(sample("a", 2, 2));
+                accounting.drain_ready(mono(4));
+            } else if state == 2 {
+                accounting.push(sample("a", 0, 0));
+            }
+            let out = accounting.invalidate_session(at(1), at(4));
+            assert_eq!(
+                out.gaps,
+                vec![Gap {
+                    start_unix: if state == 2 { 1000 } else { 1001 },
+                    end_unix: 1004,
+                }],
+                "state={state}"
+            );
+        }
     }
 
     #[test]

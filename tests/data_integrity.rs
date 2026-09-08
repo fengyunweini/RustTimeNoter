@@ -199,6 +199,75 @@ fn late_overlapping_gaps_correct_previously_durable_activity_once() {
 }
 
 #[test]
+fn capture_timeout_corrects_activity_accepted_before_consumer_start() {
+    use tracker::daemon::accounting::{Accounting, Observation, ObservationKind, WindowIdentity};
+    use tracker::daemon::aggregator::{AppKey, MonoTime, TimePoint};
+
+    let fixture = Fixture::new(NaiveDate::from_ymd_opt(2026, 9, 8).unwrap());
+    let at = |seconds| TimePoint::new(seconds * 1_000, (fixture.start + seconds) * 1_000);
+    let sample = |seconds| Observation {
+        at: at(seconds),
+        window: WindowIdentity { hwnd: 1, pid: 1 },
+        kind: ObservationKind::Sample {
+            app: Some(AppKey {
+                path: "C:/editor.exe".to_owned(),
+                basename: "editor.exe".to_owned(),
+                title: None,
+            }),
+            last_input: Some(MonoTime(0)),
+            locked: false,
+            suspended: false,
+        },
+    };
+    let messages = |output: tracker::daemon::accounting::Output| {
+        output
+            .gaps
+            .into_iter()
+            .map(|gap| WriterMsg::Gap {
+                start_unix: gap.start_unix,
+                end_unix: gap.end_unix,
+            })
+            .chain(output.segments.into_iter().map(WriterMsg::Segment))
+    };
+
+    // Model a consumer first scheduled at t=3 after samples at t=0 and t=2
+    // were accepted. Persist its first checkpoint before shutdown begins.
+    // This replay tests the runtime timeout helper and storage/query boundary,
+    // without relying on an actual delayed thread or foreground window.
+    let mut accounting = Accounting::new(300);
+    assert!(accounting.push(sample(0)).is_empty());
+    assert!(accounting.push(sample(2)).is_empty());
+    fixture.write(messages(accounting.drain_ready(at(4).monotonic)));
+    let (before, _) = fixture.query();
+    assert_eq!(before.len(), 1);
+    assert_eq!(before[0].start_unix, fixture.start);
+    assert_eq!(before[0].duration_secs, 2);
+    assert!(!before[0].is_gap());
+
+    // An admitted producer has not settled. The final matching sample cannot
+    // prove that no foreground transition was lost earlier in the session.
+    assert!(accounting.push(sample(4)).is_empty());
+    let mut correction = accounting.invalidate_session(at(3), at(4));
+    correction.extend(accounting.finish(at(4), Some(MonoTime(0))));
+    fixture.write(messages(correction));
+
+    let (after, summary) = fixture.query();
+    assert_eq!(
+        after
+            .iter()
+            .map(|slice| (
+                slice.start_unix - fixture.start,
+                slice.duration_secs,
+                slice.is_gap(),
+            ))
+            .collect::<Vec<_>>(),
+        vec![(0, 4, true)]
+    );
+    assert_eq!(summary.gap_seconds, 4);
+    assert_eq!(summary.damaged_files, 0);
+}
+
+#[test]
 fn damaged_base_and_new_part_remain_queryable_without_losing_original_bytes() {
     let fixture = Fixture::new(NaiveDate::from_ymd_opt(2026, 9, 5).unwrap());
     fixture.write([

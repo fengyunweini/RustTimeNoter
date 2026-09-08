@@ -295,7 +295,10 @@ fn finish_capture(
         emit(writer, accounting.invalidate(from, terminal.at))?;
     }
     if timed_out {
-        emit(writer, accounting.invalidate(uncertain_start, terminal.at))?;
+        emit(
+            writer,
+            accounting.invalidate_session(uncertain_start, terminal.at),
+        )?;
     }
     let last_input = match terminal.kind {
         HookKind::Shutdown { last_input } => last_input,
