@@ -115,7 +115,8 @@ runs per setting; no working-set trimming. These are local measurements, not a
 universal resource guarantee. These figures describe the September 7 snapshot (`8dc6c54`).
 The subsequent [delayed-title correction and validation](docs/title-review.md) has its own replay measurements.
 The [independent review](docs/self-review.md) records further fixes and paired measurements against `2d421dd`.
-The latest [closing review](docs/final-review.md) covers a capture-timeout correction and its regression tests.
+The [closing review](docs/final-review.md) covers a capture-timeout correction and its regression tests.
+The latest [idle-input review](docs/idle-input-review.md) covers retrospective idle corrections and paired measurements against `bf41688`.
 See the [September 7 review and paired comparison](docs/pr-review.md),
 [September 5 second review](docs/performance-review.md) and [first optimization results](docs/performance.md).
 

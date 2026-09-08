@@ -857,20 +857,47 @@ impl Accounting {
     }
 
     fn correct_input_discontinuity(&mut self, at: TimePoint, input: MonoTime, output: &mut Output) {
-        let Some(previous_deadline) = self
-            .aggregator
-            .confirmed_through()
-            .filter(|deadline| input > *deadline)
-        else {
-            return;
+        let previous_deadline = match self.aggregator.confirmed_through() {
+            Some(deadline) if input > deadline => deadline,
+            Some(_) => return,
+            None => {
+                // A newly witnessed input may predate the observation that
+                // declared us idle. That disproves its old AFK boundary even
+                // if the input itself is earlier than that boundary. Keep the
+                // session input evidence after active/idle state was closed
+                // for a lock or suspend, and correct only before suppression.
+                let Some(seen) = self.aggregator.input_seen().filter(|seen| input > *seen) else {
+                    return;
+                };
+                if !self
+                    .idle_observed
+                    .is_some_and(|idle| input <= idle.monotonic)
+                    && !self
+                        .suppressed_since
+                        .is_some_and(|since| input <= since.monotonic)
+                {
+                    return;
+                }
+                seen.saturating_add_millis(self.afk_millis)
+            }
         };
+        // Never invent a correction before this session first observed state.
+        let from = self.wall_anchor.map_or(previous_deadline, |anchor| {
+            previous_deadline.max(anchor.monotonic)
+        });
+        let suppression = self.suppressed_since;
         let until = input
             .saturating_add_millis(self.afk_millis)
-            .min(at.monotonic);
-        output.extend(self.invalidate_interval(at.project(previous_deadline), at.project(until)));
-        if until < at.monotonic {
+            .min(at.monotonic)
+            .min(suppression.map_or(at.monotonic, |since| since.monotonic));
+        if until <= from {
+            return;
+        }
+        output.extend(self.invalidate_interval(at.project(from), at.project(until)));
+        self.suppressed_since = suppression;
+        if until < at.monotonic || suppression.is_some() {
             // The latest input proves that the suffix is idle already. Do not
-            // carry an open unknown interval into lock handling or shutdown.
+            // carry an open unknown interval into idle/suppressed time.
             self.gap_start = None;
         }
     }
@@ -899,6 +926,9 @@ impl Accounting {
     /// Preserve that unknown window, while excluding the confirmed idle suffix.
     fn close_idle_window(&mut self, at: TimePoint, input: MonoTime, output: &mut Output) {
         if let Some(from) = self.idle_observed.take() {
+            // Inputs that disprove this observation were handled before
+            // observe_input by correct_input_discontinuity. This branch only
+            // covers a return after an observation that remains trustworthy.
             if input > from.monotonic {
                 Self::add_gap(
                     from,
@@ -2220,6 +2250,185 @@ mod tests {
                 vec![(1_300, 1_800)],
                 "new input proves an unknown return before the new idle deadline; sample={terminal_is_sample}"
             );
+        }
+    }
+
+    #[test]
+    fn renewed_input_can_disprove_an_earlier_idle_observation() {
+        for input in [200, 540, 600, 800] {
+            for ending in 0..5 {
+                let mut accounting = Accounting::new(300);
+                collect(&mut accounting, [sample("a", 0, 0), sample("a", 600, 0)]);
+                let mut out = accounting.drain_ready(mono(602));
+                if ending != 0 {
+                    let mut observation = if ending == 1 {
+                        fg(Some("a"), 1200, input)
+                    } else {
+                        sample("a", 1200, input)
+                    };
+                    if let ObservationKind::Sample {
+                        locked, suspended, ..
+                    } = &mut observation.kind
+                    {
+                        *locked = ending == 3;
+                        *suspended = ending == 4;
+                    }
+                    out.extend(accounting.push(observation));
+                }
+                out.extend(accounting.finish(at(1200), Some(mono(input))));
+                assert_eq!(ranges(&out), vec![("a", 0, 300)]);
+                assert_eq!(
+                    out.gaps,
+                    vec![Gap {
+                        start_unix: 1000 + if input <= 600 { 300 } else { 600 },
+                        end_unix: 1000 + input + 300,
+                    }],
+                    "input={input} ending={ending}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn renewed_input_corrects_idle_before_recovery_and_keeps_waiting_for_a_sample() {
+        for foreground in [false, true] {
+            let mut accounting = Accounting::new(300);
+            collect(&mut accounting, [sample("a", 0, 0), sample("a", 600, 0)]);
+            let mut out = accounting.drain_ready(mono(602));
+            out.extend(accounting.push(if foreground {
+                fg(Some("b"), 700, 540)
+            } else {
+                sample("b", 700, 540)
+            }));
+            out.extend(accounting.drain_ready(mono(702)));
+            assert_eq!(
+                out.gaps,
+                vec![Gap {
+                    start_unix: 1300,
+                    end_unix: 1700
+                }]
+            );
+            accounting.push(sample("b", 720, 540));
+            out.extend(accounting.finish(at(730), Some(mono(540))));
+            assert_eq!(
+                out.segments
+                    .iter()
+                    .filter(|segment| segment.app_basename == "b")
+                    .map(Segment::duration)
+                    .sum::<u64>(),
+                if foreground { 10 } else { 30 }
+            );
+            if foreground {
+                assert_eq!(
+                    out.gaps[1],
+                    Gap {
+                        start_unix: 1700,
+                        end_unix: 1720
+                    }
+                );
+            }
+        }
+        let mut accounting = Accounting::new(300);
+        collect(&mut accounting, [sample("a", 0, 0), sample("a", 600, 0)]);
+        let out = accounting.finish(at(700), Some(mono(540)));
+        assert_eq!(
+            out.gaps,
+            vec![Gap {
+                start_unix: 1300,
+                end_unix: 1700
+            }]
+        );
+    }
+
+    #[test]
+    fn renewed_input_before_suppression_corrects_only_the_unproven_prefix() {
+        for input in [4, 9] {
+            for suspended in [false, true] {
+                for finish_only in [false, true] {
+                    let mut accounting = Accounting::new(5);
+                    let mut suppression = sample("a", 10, 0);
+                    if let ObservationKind::Sample {
+                        locked,
+                        suspended: sleeping,
+                        ..
+                    } = &mut suppression.kind
+                    {
+                        *locked = !suspended;
+                        *sleeping = suspended;
+                    }
+                    collect(&mut accounting, [sample("a", 0, 0), suppression.clone()]);
+                    let mut out = accounting.drain_ready(mono(12));
+                    if !finish_only {
+                        suppression.at = at(20);
+                        if let ObservationKind::Sample { last_input, .. } = &mut suppression.kind {
+                            *last_input = Some(mono(input));
+                        }
+                        out.extend(accounting.push(suppression));
+                    }
+                    out.extend(accounting.finish(at(20), Some(mono(input))));
+                    assert_eq!(ranges(&out), vec![("a", 0, 5)]);
+                    assert_eq!(
+                        out.gaps,
+                        vec![Gap {
+                            start_unix: 1005,
+                            end_unix: 1000 + (input + 5).min(10)
+                        }],
+                        "input={input} suspended={suspended} finish_only={finish_only}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn retrospective_idle_correction_starts_at_capture_and_is_not_repeated() {
+        let mut accounting = Accounting::new(300);
+        accounting.push(sample("a", 600, 0));
+        accounting.drain_ready(mono(602));
+        let mut corrected = sample("a", 1200, 540);
+        corrected.at.wall_unix_millis = 1;
+        accounting.push(corrected);
+        let out = accounting.drain_ready(mono(1202));
+        assert!(out.segments.is_empty());
+        assert_eq!(
+            out.gaps,
+            vec![Gap {
+                start_unix: 1600,
+                end_unix: 1840
+            }]
+        );
+        for (seconds, input) in [(1210, 540), (1220, 0)] {
+            let mut repeated = sample("a", seconds, input);
+            repeated.at.wall_unix_millis = u64::MAX;
+            accounting.push(repeated);
+            let out = accounting.drain_ready(mono(seconds + 2));
+            assert!(out.gaps.is_empty());
+            assert!(out.segments.is_empty());
+        }
+        let out = accounting.finish(at(1230), Some(mono(540)));
+        assert!(out.gaps.is_empty());
+        assert!(out.segments.is_empty());
+    }
+
+    #[test]
+    fn invalid_input_cannot_retroactively_disprove_idle() {
+        for input in [None, Some(mono(0)), Some(mono(1300))] {
+            let mut accounting = Accounting::new(300);
+            collect(&mut accounting, [sample("a", 0, 0), sample("a", 600, 0)]);
+            let mut out = accounting.drain_ready(mono(602));
+            let mut next = sample("a", 1200, 0);
+            if let ObservationKind::Sample { last_input, .. } = &mut next.kind {
+                *last_input = input;
+            }
+            accounting.push(next);
+            out.extend(accounting.finish(at(1200), input));
+            assert_eq!(ranges(&out), vec![("a", 0, 300)]);
+            // A failed/future observation can make the interval after the
+            // previous sample unknown, but cannot refute earlier idle proof.
+            assert!(out.gaps.iter().all(|gap| gap.start_unix >= 1600));
+            if input == Some(mono(0)) {
+                assert!(out.gaps.is_empty());
+            }
         }
     }
 

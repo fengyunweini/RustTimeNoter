@@ -109,7 +109,8 @@ tracker uninstall service
 真实桌面与托盘，每组预热 5 秒、测量 64 秒，默认和标题配置各重复两轮，没有修剪工作集。
 这些是 9 月 7 日快照（`8dc6c54`）的本机样本，不是所有机器的资源保证。
 后续[延迟标题归属修复及验证](docs/title-review.md)另列计时复测；[独立自查](docs/self-review.md)记录进一步修复及相对 `2d421dd` 的配对数据。
-最新[收尾复查](docs/final-review.md)记录捕获关闭超时的边界修复与回归验证。
+[收尾复查](docs/final-review.md)记录捕获关闭超时的边界修复与回归验证。
+最新[空闲输入复审](docs/idle-input-review.md)记录新输入反证旧空闲的修复及相对 `bf41688` 的配对测量。
 详见[9 月 7 日复查与配对结果](docs/pr-review.md)、
 [9 月 5 日第二轮复查](docs/performance-review.md)及[第一轮优化](docs/performance.md)。
 

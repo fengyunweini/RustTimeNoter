@@ -268,6 +268,84 @@ fn capture_timeout_corrects_activity_accepted_before_consumer_start() {
 }
 
 #[test]
+fn renewed_input_after_idle_is_reported_as_unknown_without_attributing_an_app() {
+    use tracker::daemon::accounting::{Accounting, Observation, ObservationKind, WindowIdentity};
+    use tracker::daemon::aggregator::{AppKey, MonoTime, TimePoint};
+
+    let fixture = Fixture::new(NaiveDate::from_ymd_opt(2026, 9, 8).unwrap());
+    let at = |seconds| TimePoint::new(seconds * 1_000, (fixture.start + seconds) * 1_000);
+    let sample = |seconds: u64, input: u64| Observation {
+        at: at(seconds),
+        window: WindowIdentity { hwnd: 1, pid: 1 },
+        kind: ObservationKind::Sample {
+            app: Some(AppKey {
+                path: "C:/editor.exe".to_owned(),
+                basename: "editor.exe".to_owned(),
+                title: None,
+            }),
+            last_input: Some(MonoTime(input * 1_000)),
+            locked: false,
+            suspended: false,
+        },
+    };
+    let messages = |output: tracker::daemon::accounting::Output| {
+        output
+            .gaps
+            .into_iter()
+            .map(|gap| WriterMsg::Gap {
+                start_unix: gap.start_unix,
+                end_unix: gap.end_unix,
+            })
+            .chain(output.segments.into_iter().map(WriterMsg::Segment))
+    };
+
+    let mut accounting = Accounting::new(300);
+    assert!(accounting.push(sample(0, 0)).is_empty());
+    assert!(accounting.push(sample(600, 0)).is_empty());
+    fixture.write(messages(accounting.drain_ready(at(602).monotonic)));
+    let (before, before_summary) = fixture.query();
+    assert_eq!(before.len(), 1);
+    assert_eq!(before[0].start_unix, fixture.start);
+    assert_eq!(before[0].duration_secs, 300);
+    assert!(!before[0].is_gap());
+    assert_eq!(before_summary.gap_seconds, 0);
+
+    // A later causal input reading disproves part of the already-observed
+    // idle interval. Its foreground is unknown even though both samples say A.
+    assert!(accounting.push(sample(1_200, 540)).is_empty());
+    fixture.write(messages(accounting.drain_ready(at(1_202).monotonic)));
+    let (after, summary) = fixture.query();
+    assert!(
+        after.iter().any(|slice| slice.is_gap()
+            && slice.start_unix <= fixture.start + 540
+            && slice.start_unix + u64::from(slice.duration_secs) >= fixture.start + 840),
+        "input at 540 disproves idle through 840: {after:?}"
+    );
+    assert_eq!(
+        after
+            .iter()
+            .filter(|slice| !slice.is_gap())
+            .map(|slice| (slice.start_unix - fixture.start, slice.duration_secs))
+            .collect::<Vec<_>>(),
+        vec![(0, 300)]
+    );
+    assert_eq!(summary.gap_seconds, 540);
+    assert_eq!(summary.damaged_files, 0);
+
+    let report = checked_output(fixture.command().args([
+        "report",
+        "--from",
+        &fixture.date.to_string(),
+        "--to",
+        &fixture.date.to_string(),
+    ]));
+    let stdout = String::from_utf8_lossy(&report.stdout);
+    assert!(stdout.contains("Total in scope: 5m 00s"), "{stdout}");
+    assert!(stdout.contains("editor.exe"), "{stdout}");
+    assert!(String::from_utf8_lossy(&report.stderr).contains("Incomplete capture"));
+}
+
+#[test]
 fn damaged_base_and_new_part_remain_queryable_without_losing_original_bytes() {
     let fixture = Fixture::new(NaiveDate::from_ymd_opt(2026, 9, 5).unwrap());
     fixture.write([
