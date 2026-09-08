@@ -317,31 +317,7 @@ struct CaptureResolver<'a> {
 
 impl CaptureResolver<'_> {
     fn observation(&mut self, event: HookEvent) -> Observation {
-        let kind = match event.kind {
-            HookKind::Foreground { window, last_input } => ObservationKind::Foreground {
-                app: self.window(window),
-                last_input,
-            },
-            HookKind::Title { window, last_input } => ObservationKind::Title {
-                app: self.window(window),
-                last_input,
-            },
-            HookKind::Sample {
-                window,
-                last_input,
-                locked,
-                suspended,
-            } => ObservationKind::Sample {
-                app: window.and_then(|w| self.window(w)),
-                last_input,
-                locked,
-                suspended,
-            },
-            HookKind::Lock(value) => ObservationKind::Lock(value),
-            HookKind::Suspend(value) => ObservationKind::Suspend(value),
-            HookKind::Shutdown { .. } => unreachable!("handled by accounting_loop"),
-        };
-        Observation { at: event.at, kind }
+        observation_from_hook(event, |window| self.window(window))
     }
     fn window(&mut self, window: WindowSnapshot) -> Option<AppKey> {
         let cfg = self.cfg;
@@ -356,6 +332,54 @@ impl CaptureResolver<'_> {
         Some(app)
     }
 }
+
+fn observation_from_hook(
+    event: HookEvent,
+    mut resolve: impl FnMut(WindowSnapshot) -> Option<AppKey>,
+) -> Observation {
+    // Resolution can fail or map distinct windows to the same executable.
+    // Keep the captured identity regardless; only accounting has event-time
+    // foreground history and can decide whether a title belongs to it.
+    let (window, kind) = match event.kind {
+        HookKind::Foreground { window, last_input } => (
+            window,
+            ObservationKind::Foreground {
+                app: resolve(window),
+                last_input,
+            },
+        ),
+        HookKind::Title { window, last_input } => (
+            window,
+            ObservationKind::Title {
+                app: resolve(window),
+                last_input,
+            },
+        ),
+        HookKind::Sample {
+            window,
+            last_input,
+            locked,
+            suspended,
+        } => (
+            window.unwrap_or_default(),
+            ObservationKind::Sample {
+                app: window.and_then(&mut resolve),
+                last_input,
+                locked,
+                suspended,
+            },
+        ),
+        HookKind::Lock(value) => (WindowSnapshot::default(), ObservationKind::Lock(value)),
+        HookKind::Suspend(value) => (WindowSnapshot::default(), ObservationKind::Suspend(value)),
+        HookKind::Shutdown { .. } => unreachable!("handled by accounting_loop"),
+    };
+    Observation {
+        at: event.at,
+        window,
+        kind,
+    }
+}
+
 fn emit(writer: &SyncSender<WriterMsg>, output: Output) -> io::Result<()> {
     // Corrections precede estimates: a crash between writes must never make a
     // known-unreliable estimate look trustworthy.
@@ -582,9 +606,132 @@ mod tests {
     use crate::storage::model::{Gap, Segment};
 
     #[test]
+    fn unresolved_windows_retain_capture_identity_and_time() {
+        let window = WindowSnapshot { hwnd: 17, pid: 42 };
+        let at = TimePoint::new(1_234, 9_876);
+        let last_input = Some(MonoTime(1_200));
+        for kind in [
+            HookKind::Foreground { window, last_input },
+            HookKind::Title { window, last_input },
+            HookKind::Sample {
+                window: Some(window),
+                last_input,
+                locked: false,
+                suspended: false,
+            },
+        ] {
+            let mut calls = 0;
+            let observation = observation_from_hook(HookEvent { at, kind }, |captured| {
+                assert_eq!(captured, window);
+                calls += 1;
+                None
+            });
+            assert_eq!(calls, 1);
+            assert_eq!(observation.window, window);
+            assert_eq!(observation.at, at);
+            let (app, observed_input) = match observation.kind {
+                ObservationKind::Foreground { app, last_input }
+                | ObservationKind::Title { app, last_input }
+                | ObservationKind::Sample {
+                    app, last_input, ..
+                } => (app, last_input),
+                other => panic!("unexpected conversion: {other:?}"),
+            };
+            assert!(app.is_none());
+            assert_eq!(observed_input, last_input);
+        }
+    }
+
+    #[test]
+    fn same_process_windows_remain_distinct_in_out_of_order_conversion() {
+        let first = WindowSnapshot { hwnd: 17, pid: 42 };
+        let second = WindowSnapshot { hwnd: 18, pid: 42 };
+        let app = AppKey {
+            path: "same.exe".into(),
+            basename: "same.exe".into(),
+            title: Some("same title".into()),
+        };
+        // Arrival order cannot decide which window was foreground at t=10.
+        // The conversion must preserve both observations for accounting.
+        let foreground = observation_from_hook(
+            HookEvent {
+                at: TimePoint::new(20_000, 20_000),
+                kind: HookKind::Foreground {
+                    window: second,
+                    last_input: Some(MonoTime(20_000)),
+                },
+            },
+            |_| Some(app.clone()),
+        );
+        let title = observation_from_hook(
+            HookEvent {
+                at: TimePoint::new(10_000, 10_000),
+                kind: HookKind::Title {
+                    window: first,
+                    last_input: Some(MonoTime(10_000)),
+                },
+            },
+            |_| Some(app.clone()),
+        );
+        assert_eq!(foreground.window, second);
+        assert_eq!(title.window, first);
+        assert_ne!(foreground.window, title.window);
+        assert!(title.at.monotonic < foreground.at.monotonic);
+        assert!(matches!(
+            foreground.kind,
+            ObservationKind::Foreground { app: Some(observed), .. } if observed == app
+        ));
+        assert!(matches!(
+            title.kind,
+            ObservationKind::Title { app: Some(observed), .. } if observed == app
+        ));
+    }
+
+    #[test]
+    fn controls_and_missing_samples_have_unknown_window_without_resolution() {
+        let at = TimePoint::new(10_000, 20_000);
+        for kind in [
+            HookKind::Lock(true),
+            HookKind::Suspend(false),
+            HookKind::Sample {
+                window: None,
+                last_input: None,
+                locked: true,
+                suspended: false,
+            },
+        ] {
+            let observation = observation_from_hook(HookEvent { at, kind }, |_| {
+                panic!("a control or absent window cannot be resolved")
+            });
+            assert_eq!(observation.window, WindowSnapshot::default());
+            assert_eq!(observation.at, at);
+            match (kind, observation.kind) {
+                (HookKind::Lock(expected), ObservationKind::Lock(actual))
+                | (HookKind::Suspend(expected), ObservationKind::Suspend(actual)) => {
+                    assert_eq!(expected, actual);
+                }
+                (
+                    HookKind::Sample { .. },
+                    ObservationKind::Sample {
+                        app: None,
+                        last_input: None,
+                        locked: true,
+                        suspended: false,
+                    },
+                ) => {}
+                other => panic!("unexpected conversion: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
     fn terminal_sample_corrects_a_missed_foreground_without_losing_the_valid_prefix() {
         let sample = |name: &str, seconds: u64| Observation {
             at: TimePoint::new(seconds * 1_000, seconds * 1_000),
+            window: WindowSnapshot {
+                hwnd: if name == "a.exe" { 1 } else { 2 },
+                pid: 1,
+            },
             kind: ObservationKind::Sample {
                 app: Some(AppKey {
                     path: name.into(),

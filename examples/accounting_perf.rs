@@ -9,13 +9,18 @@
 //! Trace construction is outside timing; cloning owned producer payloads,
 //! accounting, consuming outputs and releasing their memory are inside timing.
 //! Allocation counts and complete output digests use a separate untimed pass.
+//! Window identities stay stable for each application; the title trace changes
+//! only the title of one editor window. Its payloads and result fields remain
+//! comparable to the 8dc6c54 trace, which already used that same application.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::hint::black_box;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
-use tracker::daemon::accounting::{Accounting, Observation, ObservationKind, Output};
+use tracker::daemon::accounting::{
+    Accounting, Observation, ObservationKind, Output, WindowIdentity,
+};
 use tracker::daemon::aggregator::{AppKey, MonoTime, TimePoint};
 
 struct MeasuredAllocator;
@@ -95,6 +100,18 @@ fn app(index: usize, titles: bool) -> AppKey {
     }
 }
 
+fn window(index: usize, titles: bool) -> WindowIdentity {
+    let id = if titles || index.is_multiple_of(2) {
+        1
+    } else {
+        2
+    };
+    WindowIdentity {
+        hwnd: id as isize,
+        pid: id,
+    }
+}
+
 fn trace(name: &str, events: usize) -> Vec<(Observation, MonoTime)> {
     let mut trace = Vec::with_capacity(events);
     for index in 0..events {
@@ -131,6 +148,7 @@ fn trace(name: &str, events: usize) -> Vec<(Observation, MonoTime)> {
         trace.push((
             Observation {
                 at: TimePoint::new(millis, WALL_MS + millis),
+                window: window(identity, titles),
                 kind,
             },
             MonoTime(millis),

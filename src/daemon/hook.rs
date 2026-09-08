@@ -33,11 +33,7 @@ use super::aggregator::{MonoTime, TimePoint};
 use crate::platform::windows as platform;
 
 /// An opaque identity, never a pointer to dereference on the consumer thread.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WindowSnapshot {
-    pub hwnd: isize,
-    pub pid: u32,
-}
+pub use super::accounting::WindowIdentity as WindowSnapshot;
 
 impl WindowSnapshot {
     fn capture(hwnd: HWND) -> Self {
@@ -362,6 +358,9 @@ unsafe extern "system" fn win_event_proc(
     let Some(capture) = CAPTURE.begin(&SHUTDOWN) else {
         return;
     };
+    // Only a dispatch-time performance prefilter for background title noise.
+    // The foreground at the event's timestamp can differ; accounting checks
+    // this identity again after placing observations in event-time order.
     if event == EVENT_OBJECT_NAMECHANGE && unsafe { GetForegroundWindow() } != hwnd {
         return;
     }

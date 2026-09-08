@@ -112,10 +112,12 @@ Runs as `LocalSystem`, can read all process info, starts before user logon.
 Measured on 2026-09-07: Ryzen 9 7945HX, Windows build 26200, Rust 1.97.1,
 x64 release with LTO. Real desktop and tray, five-second warmup, two 64-second
 runs per setting; no working-set trimming. These are local measurements, not a
-universal resource guarantee. See the [final review and paired comparison](docs/pr-review.md),
+universal resource guarantee. These figures describe the September 7 snapshot (`8dc6c54`).
+The subsequent [delayed-title correction and validation](docs/title-review.md) has its own replay measurements.
+See the [September 7 review and paired comparison](docs/pr-review.md),
 [September 5 second review](docs/performance-review.md) and [first optimization results](docs/performance.md).
 
-| Metric | Final reviewed build |
+| Metric | September 7 snapshot (`8dc6c54`) |
 |---|---|
 | Binary size | 1,057,280 B (~1.008 MiB); 512 B smaller than the preceding snapshot |
 | Default working set, per-run medians | 12.64–12.86 MiB, including shared resident pages |

@@ -13,9 +13,24 @@ use crate::storage::{model::Gap, Segment};
 pub const DEFAULT_PENDING_CAPACITY: usize = 1_024;
 pub const DEFAULT_TAIL: Duration = Duration::from_secs(2);
 
+/// Opaque foreground identity; zero fields mean unknown. Keeping this token
+/// beside an observation avoids inferring window identity from an app path.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct WindowIdentity {
+    pub hwnd: isize,
+    pub pid: u32,
+}
+
+impl WindowIdentity {
+    fn is_known(self) -> bool {
+        self.hwnd != 0 && self.pid != 0
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Observation {
     pub at: TimePoint,
+    pub window: WindowIdentity,
     pub kind: ObservationKind,
 }
 
@@ -76,6 +91,7 @@ impl Output {
 #[derive(Debug)]
 pub struct Accounting {
     aggregator: Aggregator,
+    current_window: WindowIdentity,
     afk_millis: u64,
     pending: VecDeque<Observation>,
     capacity: usize,
@@ -101,6 +117,7 @@ impl Accounting {
     pub fn with_limits(afk_threshold_secs: u64, tail: Duration, capacity: usize) -> Self {
         Self {
             aggregator: Aggregator::new(afk_threshold_secs),
+            current_window: WindowIdentity::default(),
             afk_millis: afk_threshold_secs.max(1).saturating_mul(1_000),
             pending: VecDeque::new(),
             capacity: capacity.clamp(1, DEFAULT_PENDING_CAPACITY),
@@ -253,6 +270,7 @@ impl Accounting {
             output.extend_segments(self.aggregator.observe_input(at, last_input));
         }
         output.extend_segments(self.aggregator.close(at));
+        self.current_window = WindowIdentity::default();
         if let Some(input) = last_input.filter(|input| self.known_idle(at, *input)) {
             self.close_idle_window(at, input, &mut output);
             self.close_gap(
@@ -280,13 +298,31 @@ impl Accounting {
         {
             let observation = self.pending.pop_front().expect("checked above");
             let at = self.normalize(observation.at);
-            output.extend(self.process(at, observation.kind));
+            output.extend(self.process(at, observation.window, observation.kind));
             self.processed = Some(at);
         }
         output
     }
 
-    fn process(&mut self, at: TimePoint, kind: ObservationKind) -> Output {
+    fn process(&mut self, at: TimePoint, window: WindowIdentity, kind: ObservationKind) -> Output {
+        if let ObservationKind::Title { ref app, .. } = kind {
+            // The callback's current-foreground prefilter says nothing about
+            // which window was foreground at this older event timestamp.
+            // Check after ordering, before input, AFK or gap side effects.
+            if self.waiting_sample
+                || !self.aggregator.is_active()
+                || !window.is_known()
+                || self.current_window != window
+                || !app.as_ref().zip(self.aggregator.current_app()).is_some_and(
+                    |(observed, active)| {
+                        observed.path == active.path && observed.basename == active.basename
+                    },
+                )
+            {
+                return Output::default();
+            }
+        }
+        let foreground = matches!(kind, ObservationKind::Foreground { .. });
         match kind {
             ObservationKind::Foreground { app, last_input }
             | ObservationKind::Title { app, last_input } => {
@@ -315,7 +351,7 @@ impl Accounting {
                     output.extend(self.invalidate_interval(from, at));
                     return output;
                 };
-                let Some(app) = app else {
+                let Some(app) = app.filter(|_| window.is_known()) else {
                     output.extend(self.open_gap(at));
                     return output;
                 };
@@ -323,7 +359,10 @@ impl Accounting {
                     return output;
                 }
                 output.extend_segments(self.aggregator.observe_foreground(app, at, last_input));
-                self.last_confirmed = Some(at);
+                if foreground {
+                    self.current_window = window;
+                    self.last_confirmed = Some(at);
+                }
                 output
             }
             ObservationKind::Sample {
@@ -331,7 +370,7 @@ impl Accounting {
                 last_input,
                 locked,
                 suspended,
-            } => self.sample(at, app, last_input, locked, suspended),
+            } => self.sample(at, window, app, last_input, locked, suspended),
             ObservationKind::Lock(locked) => self.control(at, locked, self.suspended),
             ObservationKind::Suspend(suspended) => self.control(at, self.locked, suspended),
         }
@@ -340,6 +379,7 @@ impl Accounting {
     fn sample(
         &mut self,
         at: TimePoint,
+        window: WindowIdentity,
         app: Option<AppKey>,
         last_input: Option<MonoTime>,
         locked: bool,
@@ -351,7 +391,33 @@ impl Accounting {
         };
         let last_input = self.aggregator.monotonic_input(at, last_input);
         let effective_input = last_input.or_else(|| self.aggregator.confirmed_input(at));
-        if let Some(input) = last_input {
+        // Detect a missed window/title transition before input handling can
+        // close/reset the old active identity at its AFK deadline. A title
+        // update is metadata, so only foreground events/samples advance the
+        // identity confirmation boundary used by this correction.
+        let changed = !self.waiting_sample
+            && !locked
+            && !suspended
+            && window.is_known()
+            && (self.current_window != window
+                || app
+                    .as_ref()
+                    .zip(self.aggregator.current_app())
+                    .is_some_and(|(observed, active)| observed != active));
+        if changed {
+            let from = self.last_confirmed.or(self.processed).unwrap_or(at);
+            let until = effective_input
+                .map(|input| {
+                    input
+                        .saturating_add_millis(self.afk_millis)
+                        .min(at.monotonic)
+                })
+                .unwrap_or(at.monotonic);
+            output.extend(self.invalidate_interval(from, at.project(until)));
+            if until < at.monotonic {
+                self.gap_start = None;
+            }
+        } else if let Some(input) = last_input {
             self.correct_input_discontinuity(at, input, &mut output);
         }
         if effective_input.is_none() && !self.locked && !self.suspended && !self.waiting_sample {
@@ -379,26 +445,14 @@ impl Accounting {
             output.extend(self.mark_idle(at, input));
             return output;
         }
-        let Some((app, last_input)) = app.zip(effective_input) else {
+        let Some((app, last_input)) = app.filter(|_| window.is_known()).zip(effective_input) else {
             output.extend(self.open_gap(at));
             return output;
         };
 
-        // A periodic snapshot can discover a missed transition, but cannot say
-        // when it happened. Remove the interval since the last known identity.
-        // When samples are not required for recovery, the aggregator owns the
-        // current identity. Keeping another AppKey here cloned every payload.
-        if !self.waiting_sample
-            && self
-                .aggregator
-                .current_app()
-                .is_some_and(|known| known != &app)
-        {
-            let from = self.last_confirmed.or(self.processed).unwrap_or(at);
-            output.extend(self.invalidate_interval(from, at));
-        }
         self.close_gap(at, &mut output);
         self.waiting_sample = false;
+        self.current_window = window;
         output.extend_segments(self.aggregator.observe_foreground(app, at, last_input));
         output.extend_segments(self.aggregator.checkpoint(at));
         self.last_confirmed = Some(at);
@@ -413,6 +467,7 @@ impl Accounting {
         self.suspended = suspended;
         let segments = self.aggregator.set_suppression(at, locked, suspended);
         self.waiting_sample = true;
+        self.current_window = WindowIdentity::default();
         self.last_confirmed = None;
         let idle_observed = self.idle_observed.take();
         let mut output = Output {
@@ -433,6 +488,7 @@ impl Accounting {
     fn open_gap(&mut self, at: TimePoint) -> Output {
         let segments = self.aggregator.close(at);
         self.aggregator.reset();
+        self.current_window = WindowIdentity::default();
         self.waiting_sample = true;
         self.last_confirmed = None;
         let mut output = Output {
@@ -469,6 +525,7 @@ impl Accounting {
         }
         Self::add_gap(from, to, &mut output);
         self.aggregator.reset();
+        self.current_window = WindowIdentity::default();
         self.last_confirmed = None;
         self.waiting_sample = true;
         self.gap_start = Some(to);
@@ -546,6 +603,7 @@ impl Accounting {
             &mut output,
         );
         self.aggregator.reset();
+        self.current_window = WindowIdentity::default();
         self.last_confirmed = Some(at);
         self.waiting_sample = true;
         self.idle_observed = Some(at);
@@ -583,8 +641,15 @@ mod tests {
             title: None,
         }
     }
+    fn window(name: &str) -> WindowIdentity {
+        WindowIdentity {
+            hwnd: name.as_bytes()[0] as isize,
+            pid: name.as_bytes()[0] as u32,
+        }
+    }
     fn sample(name: &str, seconds: u64, input: u64) -> Observation {
         Observation {
+            window: window(name),
             at: at(seconds),
             kind: ObservationKind::Sample {
                 app: Some(app(name)),
@@ -596,9 +661,23 @@ mod tests {
     }
     fn fg(name: Option<&str>, seconds: u64, input: u64) -> Observation {
         Observation {
+            window: name.map(window).unwrap_or_default(),
             at: at(seconds),
             kind: ObservationKind::Foreground {
                 app: name.map(app),
+                last_input: Some(mono(input)),
+            },
+        }
+    }
+    fn title(name: &str, value: &str, seconds: u64, input: u64) -> Observation {
+        Observation {
+            at: at(seconds),
+            window: window(name),
+            kind: ObservationKind::Title {
+                app: Some(AppKey {
+                    title: Some(value.into()),
+                    ..app(name)
+                }),
                 last_input: Some(mono(input)),
             },
         }
@@ -628,6 +707,281 @@ mod tests {
     }
 
     #[test]
+    fn delayed_background_title_cannot_move_a_foreground_boundary() {
+        for foreground_delivered_first in [false, true] {
+            let mut accounting = Accounting::new(300);
+            accounting.push(sample("b", 0, 0));
+            let title = Observation {
+                window: window("a"),
+                at: at(5),
+                kind: ObservationKind::Title {
+                    app: Some(app("a")),
+                    last_input: Some(mono(5)),
+                },
+            };
+            let foreground = fg(Some("a"), 6, 6);
+            let events = if foreground_delivered_first {
+                [foreground, title]
+            } else {
+                [title, foreground]
+            };
+            collect(&mut accounting, events);
+            accounting.push(sample("a", 8, 8));
+            let out = accounting.finish(at(10), Some(mono(10)));
+            assert_eq!(ranges(&out), vec![("b", 0, 6), ("a", 6, 8), ("a", 8, 10)]);
+            assert!(out.gaps.is_empty());
+        }
+    }
+
+    #[test]
+    fn changed_window_is_checked_before_afk_can_erase_its_previous_identity() {
+        for (seconds, input, until) in [(350, 350, 350), (900, 500, 800), (900, 0, 300)] {
+            for same_app in [false, true] {
+                let mut accounting = Accounting::new(300);
+                accounting.push(sample("a", 0, 0));
+                accounting.drain_ready(mono(2));
+                let mut changed = sample(if same_app { "a" } else { "b" }, seconds, input);
+                changed.window.hwnd += 100;
+                accounting.push(changed);
+                let out = accounting.finish(at(seconds), Some(mono(input)));
+                assert_eq!(
+                    out.gaps,
+                    vec![Gap {
+                        start_unix: 1000,
+                        end_unix: 1000 + until
+                    }]
+                );
+                // Any append-only estimate for A is wholly covered by its
+                // correction; the changed window is never backfilled.
+                assert!(out
+                    .segments
+                    .iter()
+                    .all(|s| s.start_unix >= 1000 && s.end_unix <= 1000 + until));
+            }
+        }
+    }
+
+    #[test]
+    fn an_unresolved_new_window_still_disproves_the_previous_attribution() {
+        for (seconds, input, until) in
+            [(10, 0, 10), (350, 350, 350), (900, 500, 800), (900, 0, 300)]
+        {
+            let mut accounting = Accounting::new(300);
+            accounting.push(sample("a", 0, 0));
+            accounting.drain_ready(mono(2));
+            let mut unknown = sample("b", seconds, input);
+            let ObservationKind::Sample { app, .. } = &mut unknown.kind else {
+                unreachable!()
+            };
+            *app = None; // Capture succeeded; executable lookup did not.
+            accounting.push(unknown);
+            let out = accounting.finish(at(seconds), Some(mono(input)));
+            assert_eq!(
+                out.gaps,
+                vec![Gap {
+                    start_unix: 1000,
+                    end_unix: 1000 + until
+                }]
+            );
+            assert!(out
+                .segments
+                .iter()
+                .all(|s| s.app_basename == "a" && s.end_unix <= 1000 + until));
+        }
+    }
+
+    #[test]
+    fn rejected_titles_have_no_input_idle_gap_or_confirmation_side_effects() {
+        for case in 0..7 {
+            let mut accounting = Accounting::new(300);
+            accounting.push(sample("a", 0, 0));
+            let mut ignored = title("a", "background", 290, 290);
+            match case {
+                0 => ignored.window.hwnd += 1, // same process, another window
+                1 => ignored.window.pid += 1,  // HWND has changed owner
+                2 => ignored.window = WindowIdentity::default(),
+                3 => ignored.window.pid = 0,
+                _ => {
+                    let ObservationKind::Title { app: observed, .. } = &mut ignored.kind else {
+                        unreachable!()
+                    };
+                    match case {
+                        4 => *observed = None,
+                        5 => observed.as_mut().unwrap().path = "other-uwp-child".into(),
+                        _ => observed.as_mut().unwrap().basename = "different.exe".into(),
+                    }
+                }
+            }
+            accounting.push(ignored);
+            let no_change = accounting.drain_ready(mono(292));
+            assert!(no_change.segments.is_empty() && no_change.gaps.is_empty());
+            assert_eq!(accounting.last_confirmed, Some(at(0)));
+            accounting.push(sample("a", 350, 0));
+            let out = accounting.finish(at(350), Some(mono(0)));
+            assert_eq!(ranges(&out), vec![("a", 0, 300)], "case={case}");
+            assert!(out.gaps.is_empty());
+            assert!(out.segments.iter().all(|s| s.title.is_none()));
+        }
+    }
+
+    #[test]
+    fn same_process_windows_cannot_exchange_delayed_titles() {
+        let first = window("a");
+        let second = WindowIdentity {
+            hwnd: first.hwnd + 1,
+            pid: first.pid,
+        };
+        let mut accounting = Accounting::new(300);
+        accounting.push(sample("a", 0, 0));
+        let mut changed = fg(Some("a"), 6, 6); // AppKey unchanged
+        changed.window = second;
+        let mut background = title("a", "background", 5, 5);
+        background.window = second;
+        // Deliver foreground first: the title must still be checked at t=5.
+        collect(&mut accounting, [changed, background]);
+        let mut legitimate = title("a", "foreground", 7, 7);
+        legitimate.window = second;
+        accounting.push(legitimate);
+        let out = accounting.finish(at(10), Some(mono(10)));
+        assert_eq!(ranges(&out), vec![("a", 0, 7), ("a", 7, 10)]);
+        assert_eq!(out.segments[0].title, None);
+        assert_eq!(out.segments[1].title.as_deref(), Some("foreground"));
+        assert!(out.gaps.is_empty());
+    }
+
+    #[test]
+    fn a_sample_with_the_same_app_but_a_new_window_corrects_and_reestablishes_identity() {
+        let mut accounting = Accounting::new(300);
+        accounting.push(sample("a", 0, 0));
+        let mut changed = sample("a", 5, 5);
+        changed.window.hwnd += 1;
+        let second = changed.window;
+        accounting.push(changed);
+        let mut legitimate = title("a", "new window", 6, 6);
+        legitimate.window = second;
+        accounting.push(legitimate);
+        accounting.push(title("a", "old window", 7, 7));
+        let out = accounting.finish(at(10), Some(mono(10)));
+        assert_eq!(
+            out.gaps,
+            vec![Gap {
+                start_unix: 1000,
+                end_unix: 1005
+            }]
+        );
+        assert_eq!(
+            out.segments.last().unwrap().title.as_deref(),
+            Some("new window")
+        );
+        assert_eq!(out.segments.last().unwrap().start_unix, 1006);
+        assert!(out
+            .segments
+            .iter()
+            .all(|s| s.title.as_deref() != Some("old window")));
+    }
+
+    #[test]
+    fn titles_never_recover_startup_idle_unknown_or_suppressed_capture() {
+        for state in 0..6 {
+            let mut accounting = Accounting::new(5);
+            if state != 0 {
+                accounting.push(sample("a", 0, 0));
+                accounting.drain_ready(mono(2));
+            }
+            match state {
+                1 | 2 => {
+                    let kind = if state == 1 {
+                        ObservationKind::Lock(true)
+                    } else {
+                        ObservationKind::Suspend(true)
+                    };
+                    accounting.push(Observation {
+                        at: at(3),
+                        window: WindowIdentity::default(),
+                        kind,
+                    });
+                    let kind = if state == 1 {
+                        ObservationKind::Lock(false)
+                    } else {
+                        ObservationKind::Suspend(false)
+                    };
+                    accounting.push(Observation {
+                        at: at(4),
+                        window: WindowIdentity::default(),
+                        kind,
+                    });
+                }
+                3 => {
+                    accounting.push(fg(None, 3, 3));
+                }
+                4 => {
+                    accounting.invalidate(at(3), at(4));
+                }
+                5 => {
+                    accounting.push(sample("a", 5, 0));
+                }
+                _ => {}
+            }
+            accounting.drain_ready(mono(7));
+            accounting.push(title("a", "must not resume", 6, 6));
+            assert!(accounting.drain_ready(mono(8)).is_empty(), "state={state}");
+            accounting.push(sample("a", 7, 7));
+            let out = accounting.finish(at(9), Some(mono(7)));
+            assert_eq!(ranges(&out), vec![("a", 7, 9)], "state={state}");
+        }
+    }
+
+    #[test]
+    fn late_title_corrects_history_instead_of_using_the_present_window() {
+        let mut accounting = Accounting::new(300);
+        collect(
+            &mut accounting,
+            [sample("a", 0, 0), fg(Some("b"), 6, 6), sample("b", 10, 10)],
+        );
+        accounting.drain_ready(mono(12));
+        let correction = accounting.push(title("a", "historical", 5, 5));
+        assert_eq!(
+            correction.gaps,
+            vec![Gap {
+                start_unix: 1005,
+                end_unix: 1010
+            }]
+        );
+        accounting.push(title("b", "cannot restore identity", 11, 11));
+        accounting.push(sample("b", 12, 12));
+        let out = accounting.finish(at(14), Some(mono(14)));
+        assert_eq!(
+            out.gaps,
+            vec![Gap {
+                start_unix: 1010,
+                end_unix: 1012
+            }]
+        );
+        assert_eq!(ranges(&out), vec![("b", 12, 14)]);
+    }
+
+    #[test]
+    fn equal_timestamp_title_and_foreground_orders_never_move_the_boundary() {
+        for title_first in [false, true] {
+            let mut accounting = Accounting::new(300);
+            accounting.push(sample("b", 0, 0));
+            let foreground = fg(Some("a"), 6, 6);
+            let title = title("a", "edited", 6, 6);
+            collect(
+                &mut accounting,
+                if title_first {
+                    [title, foreground]
+                } else {
+                    [foreground, title]
+                },
+            );
+            let out = accounting.finish(at(10), Some(mono(10)));
+            assert_eq!(ranges(&out), vec![("b", 0, 6), ("a", 6, 10)]);
+            assert!(out.gaps.is_empty());
+        }
+    }
+
+    #[test]
     fn regressing_input_timestamp_keeps_the_witnessed_deadline() {
         for ending in 0..4 {
             for end in [390, 450] {
@@ -638,9 +992,13 @@ mod tests {
                     1 => Some(sample("a", 350, 0)),
                     2 => Some(fg(Some("b"), 350, 0)),
                     _ => Some(Observation {
+                        window: window("a"),
                         at: at(350),
                         kind: ObservationKind::Title {
-                            app: Some(app("b")),
+                            app: Some(AppKey {
+                                title: Some("edited".into()),
+                                ..app("a")
+                            }),
                             last_input: Some(mono(0)),
                         },
                     }),
@@ -655,7 +1013,7 @@ mod tests {
                     "ending={ending}, end={end}"
                 );
                 assert!(out.gaps.is_empty(), "ending={ending}, end={end}");
-                if ending >= 2 {
+                if ending == 2 {
                     assert!(out
                         .segments
                         .iter()
@@ -728,6 +1086,7 @@ mod tests {
         let mut titled = app("a");
         titled.title = Some("edited".into());
         let title = Observation {
+            window: window("a"),
             at: at(306),
             kind: ObservationKind::Title {
                 app: Some(titled.clone()),
@@ -735,6 +1094,7 @@ mod tests {
             },
         };
         let later = Observation {
+            window: window("a"),
             at: at(330),
             kind: ObservationKind::Sample {
                 app: Some(titled),
@@ -808,19 +1168,23 @@ mod tests {
             [
                 sample("a", 0, 0),
                 Observation {
+                    window: WindowIdentity::default(),
                     at: at(5),
                     kind: ObservationKind::Lock(true),
                 },
                 Observation {
+                    window: WindowIdentity::default(),
                     at: at(6),
                     kind: ObservationKind::Suspend(true),
                 },
                 Observation {
+                    window: WindowIdentity::default(),
                     at: at(100),
                     kind: ObservationKind::Suspend(false),
                 },
                 fg(Some("b"), 101, 101),
                 Observation {
+                    window: WindowIdentity::default(),
                     at: at(102),
                     kind: ObservationKind::Lock(false),
                 },
@@ -928,6 +1292,7 @@ mod tests {
         accounting.push(sample("a", 0, 0));
         assert!(accounting.drain_ready(mono(2)).checkpoint);
         accounting.push(Observation {
+            window: window("b"),
             at: at(1),
             kind: ObservationKind::Foreground {
                 app: Some(app("b")),
@@ -949,6 +1314,7 @@ mod tests {
     fn expired_input_cache_marks_unknown_time_instead_of_silently_trimming_it() {
         let mut accounting = Accounting::new(300);
         let delayed = Observation {
+            window: window("b"),
             at: at(310),
             kind: ObservationKind::Foreground {
                 app: Some(app("b")),
@@ -982,6 +1348,7 @@ mod tests {
     fn unknown_samples_commit_gap_progress_before_recovery_or_shutdown() {
         let mut accounting = Accounting::new(300);
         let unknown = |seconds, input| Observation {
+            window: WindowIdentity::default(),
             at: at(seconds),
             kind: ObservationKind::Sample {
                 app: None,
@@ -1013,6 +1380,7 @@ mod tests {
     fn confirmed_afk_with_no_foreground_is_not_missing_data() {
         let mut accounting = Accounting::new(300);
         let idle = |seconds| Observation {
+            window: WindowIdentity::default(),
             at: at(seconds),
             kind: ObservationKind::Sample {
                 app: None,
@@ -1087,6 +1455,7 @@ mod tests {
     fn locking_sample_preserves_an_unobserved_afk_return_window() {
         let mut accounting = Accounting::new(300);
         let lock = Observation {
+            window: WindowIdentity::default(),
             at: at(330),
             kind: ObservationKind::Sample {
                 app: None,
@@ -1134,6 +1503,7 @@ mod tests {
         for renewed_input in [0, 500] {
             let mut accounting = Accounting::new(300);
             let lock = Observation {
+                window: WindowIdentity::default(),
                 at: at(900),
                 kind: ObservationKind::Sample {
                     app: None,
@@ -1220,9 +1590,10 @@ mod tests {
                     fg(Some("b"), 900, 500)
                 } else {
                     Observation {
+                        window: window("a"),
                         at: at(900),
                         kind: ObservationKind::Sample {
-                            app: (ending != 5).then(|| app("b")),
+                            app: (ending != 5).then(|| app("a")),
                             last_input: Some(mono(500)),
                             locked: ending == 3,
                             suspended: ending == 4,
