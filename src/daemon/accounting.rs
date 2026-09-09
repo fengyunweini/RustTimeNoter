@@ -40,6 +40,10 @@ impl SameTickForeground {
     }
 }
 
+fn same_application(left: &AppKey, right: &AppKey) -> bool {
+    left.path == right.path && left.basename == right.basename
+}
+
 #[derive(Debug, Clone)]
 pub struct Observation {
     pub at: TimePoint,
@@ -225,7 +229,7 @@ impl Accounting {
                         || app
                             .as_ref()
                             .zip(self.aggregator.current_app())
-                            .is_some_and(|(observed, active)| observed != active))
+                            .is_some_and(|(observed, active)| !same_application(observed, active)))
             }
             _ => false,
         };
@@ -233,11 +237,10 @@ impl Accounting {
             ObservationKind::Title { app, .. } => {
                 !observation.window.is_known()
                     || self.current_window != observation.window
-                    || !app.as_ref().zip(self.aggregator.current_app()).is_some_and(
-                        |(observed, active)| {
-                            observed.path == active.path && observed.basename == active.basename
-                        },
-                    )
+                    || !app
+                        .as_ref()
+                        .zip(self.aggregator.current_app())
+                        .is_some_and(|(observed, active)| same_application(observed, active))
             }
             _ => false,
         };
@@ -468,11 +471,10 @@ impl Accounting {
                 || !self.aggregator.is_active()
                 || !window.is_known()
                 || self.current_window != window
-                || !app.as_ref().zip(self.aggregator.current_app()).is_some_and(
-                    |(observed, active)| {
-                        observed.path == active.path && observed.basename == active.basename
-                    },
-                )
+                || !app
+                    .as_ref()
+                    .zip(self.aggregator.current_app())
+                    .is_some_and(|(observed, active)| same_application(observed, active))
             {
                 return Output::default();
             }
@@ -594,7 +596,12 @@ impl Accounting {
             .take_while(|observation| observation.at.monotonic == at.monotonic)
         {
             if let ObservationKind::Foreground { app: observed, .. } = &observation.kind {
-                if observation.window != window || observed.as_ref() != app {
+                let same_app = match (observed.as_ref(), app) {
+                    (Some(observed), Some(app)) => same_application(observed, app),
+                    (None, None) => true,
+                    _ => false,
+                };
+                if observation.window != window || !same_app {
                     return false;
                 }
                 matched = true;
@@ -629,7 +636,7 @@ impl Accounting {
                 && (!evidence.current.is_known()
                     || (window != evidence.previous && window != evidence.current))
         });
-        // Detect a missed window/title transition before input handling can
+        // Detect a missed window/application transition before input handling can
         // close/reset the old active identity at its AFK deadline. A title
         // update is metadata, so only foreground events/samples advance the
         // identity confirmation boundary used by this correction.
@@ -643,7 +650,7 @@ impl Accounting {
                 || app
                     .as_ref()
                     .zip(self.aggregator.current_app())
-                    .is_some_and(|(observed, active)| observed != active));
+                    .is_some_and(|(observed, active)| !same_application(observed, active)));
         let matching_foreground =
             changed && self.matching_pending_foreground(at, window, app.as_ref());
         let previous_window = self.current_window;
@@ -1982,6 +1989,130 @@ mod tests {
             (1_005, 1_010)
         );
         assert_eq!(ranges(&out).last().copied(), Some(("b", 10, 12)));
+    }
+
+    #[test]
+    fn sample_title_changes_preserve_application_time() {
+        for (old_title, new_title) in [
+            (None, Some("new")),
+            (Some("old"), None),
+            (Some("old"), Some("new")),
+        ] {
+            let mut accounting = Accounting::new(300);
+            let mut initial = sample("a", 0, 0);
+            let mut confirmed = fg(Some("a"), 10, 10);
+            for observation in [&mut initial, &mut confirmed] {
+                match &mut observation.kind {
+                    ObservationKind::Sample { app: Some(app), .. }
+                    | ObservationKind::Foreground { app: Some(app), .. } => {
+                        app.title = old_title.map(str::to_owned);
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            let mut next = sample("a", 30, 30);
+            if let ObservationKind::Sample { app: Some(app), .. } = &mut next.kind {
+                app.title = new_title.map(str::to_owned);
+            }
+            collect(&mut accounting, [initial, confirmed, next]);
+            let out = accounting.finish(at(40), Some(mono(40)));
+            assert!(out.gaps.is_empty(), "{old_title:?} -> {new_title:?}");
+            assert_eq!(ranges(&out), vec![("a", 0, 30), ("a", 30, 40)]);
+            assert_eq!(out.segments[0].title.as_deref(), old_title);
+            assert_eq!(out.segments[1].title.as_deref(), new_title);
+        }
+    }
+
+    #[test]
+    fn same_tick_foreground_and_sample_can_read_different_titles() {
+        for foreground_first in [false, true] {
+            let mut accounting = Accounting::new(300);
+            accounting.push(sample("a", 0, 0));
+            let mut snapshot = sample("b", 10, 10);
+            if let ObservationKind::Sample { app: Some(app), .. } = &mut snapshot.kind {
+                app.title = Some("sample title".into());
+            }
+            let mut transition = fg(Some("b"), 10, 10);
+            if let ObservationKind::Foreground { app: Some(app), .. } = &mut transition.kind {
+                app.title = Some("foreground title".into());
+            }
+            collect(
+                &mut accounting,
+                if foreground_first {
+                    [transition, snapshot]
+                } else {
+                    [snapshot, transition]
+                },
+            );
+            let out = accounting.finish(at(40), Some(mono(40)));
+            assert!(out.gaps.is_empty(), "foreground_first={foreground_first}");
+            assert_eq!(ranges(&out), vec![("a", 0, 10), ("b", 10, 40)]);
+        }
+    }
+
+    #[test]
+    fn title_tolerance_still_corrects_real_window_and_application_changes() {
+        for change in 0..3 {
+            let mut accounting = Accounting::new(300);
+            let mut changed = sample("a", 30, 30);
+            match change {
+                0 => changed.window.hwnd += 1,
+                1 => changed.window.pid += 1,
+                _ => {
+                    if let ObservationKind::Sample { app: Some(app), .. } = &mut changed.kind {
+                        app.path = "another.exe".into();
+                        app.basename = "another.exe".into();
+                    }
+                }
+            }
+            collect(
+                &mut accounting,
+                [sample("a", 0, 0), fg(Some("a"), 10, 10), changed],
+            );
+            let out = accounting.finish(at(40), Some(mono(40)));
+            assert_eq!(
+                out.gaps,
+                vec![Gap {
+                    start_unix: 1010,
+                    end_unix: 1030
+                }],
+                "change={change}"
+            );
+        }
+    }
+
+    #[test]
+    fn late_title_metadata_does_not_revoke_an_earlier_application_confirmation() {
+        for changed_application in [false, true] {
+            let mut accounting = Accounting::new(300);
+            collect(
+                &mut accounting,
+                [
+                    sample("a", 0, 0),
+                    fg(Some("a"), 10, 10),
+                    title("c", "ignored", 40, 40),
+                ],
+            );
+            accounting.drain_ready(mono(42));
+            let mut late = sample("a", 20, 20);
+            if let ObservationKind::Sample { app: Some(app), .. } = &mut late.kind {
+                app.title = Some("new title".into());
+                if changed_application {
+                    app.path = "another.exe".into();
+                    app.basename = "another.exe".into();
+                }
+            }
+            let out = accounting.push(late);
+            // Late observations retain the ordinary event-time correction,
+            // but title metadata alone cannot disprove an earlier app prefix.
+            assert_eq!(
+                out.gaps,
+                vec![Gap {
+                    start_unix: if changed_application { 1010 } else { 1020 },
+                    end_unix: 1040,
+                }]
+            );
+        }
     }
 
     #[test]

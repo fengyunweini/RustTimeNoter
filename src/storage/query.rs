@@ -37,12 +37,12 @@ pub struct QuerySummary {
 
 impl QuerySummary {
     pub fn warning(&self) -> Option<String> {
-        if self.gap_seconds == 0 && self.damaged_files == 0 {
+        if self.damaged_files == 0 {
             return None;
         }
         Some(format!(
-            "Incomplete capture: {} seconds excluded from usage; {} damaged log file(s) retained. Missing data is not idle time.",
-            self.gap_seconds, self.damaged_files
+            "Log read warning: {} log file(s) have unreadable tails; only verified records were loaded. Preserve the data directory for recovery.",
+            self.damaged_files
         ))
     }
 }
@@ -319,7 +319,8 @@ mod tests {
     use chrono_tz::Tz;
 
     use super::{
-        read_local_date_range, validate_query_day_count, visit_local_date_range, MAX_QUERY_DAYS,
+        read_local_date_range, validate_query_day_count, visit_local_date_range, QuerySummary,
+        MAX_QUERY_DAYS,
     };
     use crate::local_time::{Calendar, TestCalendar};
     use crate::paths::AppPaths;
@@ -327,6 +328,27 @@ mod tests {
     use crate::storage::log::LogWriter;
     use crate::storage::model::Record;
     use crate::storage::writer::{unix_to_utc_date, utc_midnight_unix};
+
+    #[test]
+    fn warnings_distinguish_capture_gaps_from_unreadable_log_data() {
+        for gap_seconds in [0, 120] {
+            let summary = QuerySummary {
+                gap_seconds,
+                damaged_files: 0,
+            };
+            assert!(summary.warning().is_none());
+            let warning = QuerySummary {
+                damaged_files: 1,
+                ..summary
+            }
+            .warning()
+            .unwrap();
+            assert!(warning.contains("1 log file(s) have unreadable tails"));
+            assert!(warning.contains("only verified records were loaded"));
+            assert!(!warning.contains("Incomplete capture"));
+            assert!(!warning.contains("seconds"));
+        }
+    }
 
     fn unix(y: i32, m: u32, d: u32, h: u32, min: u32, s: u32) -> u64 {
         Utc.with_ymd_and_hms(y, m, d, h, min, s)

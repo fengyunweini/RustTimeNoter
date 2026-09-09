@@ -186,7 +186,8 @@ bin\tracker.exe        Autostart binary copy
 - Late events beyond the adjustable tail, queue overflow and unresolved foreground intervals become
   explicit gaps. Known idle, locked and suspended time is excluded without being labelled missing.
   Gap boundaries round outward to whole seconds, so a correction may conservatively remove a boundary second.
-- Reports, status, tail and exports warn about incomplete capture. CSV/JSON append `record_type`
+- The HTML report keeps its self-contained layout. Ordinary gaps do not produce recurring warnings;
+  actual damaged-file reads produce a command-line diagnostic. CSV/JSON append `record_type`
   (`activity` or `gap`); gap duration is not application usage.
 - Long-running foreground sessions are checkpointed. Under normal scheduling and storage operation,
   the unsaved tail is approximately `min(idle_tick_secs, flush_interval_secs) + 2` seconds;
@@ -237,7 +238,7 @@ bin\tracker.exe        Autostart binary copy
 | Graceful shutdown | `tracker stop` (named event) / Ctrl+C / SCM stop / console close / logoff / shutdown → flushes, then exits |
 | Single instance | Named mutex `Global\RustTimeNoter.Daemon` — second launch exits immediately |
 | System tray | Right-click: Open report / Open data folder / Stop tracking. Double-click = open report |
-| Crash recovery | Preserve damaged originals; read authenticated prefixes and numbered continuations with an incomplete-data warning |
+| Crash recovery | Preserve damaged originals; read authenticated prefixes and numbered continuations; diagnose actual damaged-file reads |
 
 ---
 
