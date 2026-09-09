@@ -104,6 +104,9 @@ pub fn run(args: ViewArgs, paths: &AppPaths, machine_scope: bool) -> std::io::Re
         *by_app_total.entry(name).or_insert(0) += r.duration_secs as u64;
         Ok(())
     })?;
+    if let Some(warning) = quality.warning() {
+        eprintln!("{warning}");
+    }
 
     let by_day: Vec<DayRows> = day_totals
         .into_iter()
@@ -119,15 +122,7 @@ pub fn run(args: ViewArgs, paths: &AppPaths, machine_scope: bool) -> std::io::Re
     overall.sort_by_key(|row| std::cmp::Reverse(row.1));
     let overall_total: u64 = overall.iter().map(|(_, v)| *v).sum();
 
-    let mut html = render_html(&overall, overall_total, &by_day, days, &paths.root);
-    if let Some(warning) = quality.warning() {
-        let notice = format!("<div class=\"card\" role=\"status\"><h2>记录不完整 / Incomplete capture</h2><p>{}</p></div>", html_escape(&warning));
-        html = html.replacen(
-            "<h1>RustTimeNoter</h1>",
-            &format!("<h1>RustTimeNoter</h1>{notice}"),
-            1,
-        );
-    }
+    let html = render_html(&overall, overall_total, &by_day, days, &paths.root);
 
     let out_path = match args.out.clone() {
         Some(p) => p,
@@ -370,6 +365,37 @@ mod tests {
             .to_string()
             .contains(&format!("maximum is {MAX_QUERY_DAYS}")));
         assert!(!paths.key_file.exists());
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn read_error_preserves_existing_report() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = AppPaths::from_root(temp.path());
+        paths.ensure_dirs().unwrap();
+        load_or_create_master_key(&paths.key_file, false).unwrap();
+        let date = crate::storage::writer::unix_to_utc_date(now_unix());
+        let log = paths.log_file_for_day(date.year, date.month, date.day);
+        std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+        std::fs::write(&log, b"RTN").unwrap();
+        let report = temp.path().join("report.html");
+        let existing = b"<!doctype html><p>Existing report</p>";
+        std::fs::write(&report, existing).unwrap();
+
+        let error = run(
+            ViewArgs {
+                days: 1,
+                no_open: true,
+                out: Some(report.clone()),
+            },
+            &paths,
+            false,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(std::fs::read(report).unwrap(), existing);
+        assert_eq!(std::fs::read(log).unwrap(), b"RTN");
     }
 
     #[test]

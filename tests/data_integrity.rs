@@ -309,6 +309,7 @@ fn renewed_input_after_idle_is_reported_as_unknown_without_attributing_an_app() 
     assert_eq!(before[0].duration_secs, 300);
     assert!(!before[0].is_gap());
     assert_eq!(before_summary.gap_seconds, 0);
+    assert!(before_summary.warning().is_none());
 
     // A later causal input reading disproves part of the already-observed
     // idle interval. Its foreground is unknown even though both samples say A.
@@ -342,12 +343,13 @@ fn renewed_input_after_idle_is_reported_as_unknown_without_attributing_an_app() 
     let stdout = String::from_utf8_lossy(&report.stdout);
     assert!(stdout.contains("Total in scope: 5m 00s"), "{stdout}");
     assert!(stdout.contains("editor.exe"), "{stdout}");
-    assert!(String::from_utf8_lossy(&report.stderr).contains("Incomplete capture"));
+    assert!(report.stderr.is_empty(), "{:?}", report.stderr);
 }
 
 #[test]
 fn damaged_base_and_new_part_remain_queryable_without_losing_original_bytes() {
-    let fixture = Fixture::new(NaiveDate::from_ymd_opt(2026, 9, 5).unwrap());
+    let today = SystemCalendar::new().today_at(now_unix()).unwrap();
+    let fixture = Fixture::new(today);
     fixture.write([
         fixture.activity(0, 10, "before"),
         fixture.activity(20, 30, "interrupted"),
@@ -370,7 +372,8 @@ fn damaged_base_and_new_part_remain_queryable_without_losing_original_bytes() {
     let (slices, summary) = fixture.query();
     assert_eq!(summary.damaged_files, 1);
     assert_eq!(summary.gap_seconds, 0);
-    assert!(summary.warning().unwrap().contains("Incomplete capture"));
+    let warning = summary.warning().unwrap();
+    assert!(warning.contains("1 log file(s) have unreadable tails"));
     assert_eq!(
         slices
             .iter()
@@ -382,17 +385,44 @@ fn damaged_base_and_new_part_remain_queryable_without_losing_original_bytes() {
     // Exercise dictionary resolution and the actual CLI against both parts.
     let json_path = fixture.directory.path().join("recovered.json");
     let output = fixture.export("json", &json_path);
-    assert!(String::from_utf8_lossy(&output.stderr).contains("1 damaged log file"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains(&warning));
     let rows: Vec<serde_json::Value> =
         serde_json::from_slice(&std::fs::read(json_path).unwrap()).unwrap();
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0]["app_path"], "C:/before.exe");
     assert_eq!(rows[1]["app_path"], "C:/after.exe");
+
+    let status = checked_output(fixture.command().arg("status"));
+    assert!(String::from_utf8_lossy(&status.stdout).contains(&warning));
+    let report = checked_output(fixture.command().args([
+        "report",
+        "--from",
+        &today.to_string(),
+        "--to",
+        &today.to_string(),
+    ]));
+    assert!(String::from_utf8_lossy(&report.stderr).contains(&warning));
+    let tail = checked_output(fixture.command().args(["tail", "--once"]));
+    assert!(String::from_utf8_lossy(&tail.stderr).contains(&warning));
+    let html_path = fixture.directory.path().join("recovered.html");
+    let view = checked_output(
+        fixture
+            .command()
+            .args(["view", "--days", "1", "--no-open", "--out"])
+            .arg(&html_path),
+    );
+    assert!(String::from_utf8_lossy(&view.stderr).contains(&warning));
+    let html = std::fs::read_to_string(html_path).unwrap();
+    assert!(html.contains("Total tracked: <b>40s</b>"));
+    assert_eq!(html.matches("<div class=\"card\"").count(), 2);
+    assert!(!html.contains("Log read warning"));
+    assert!(!html.contains("Incomplete capture"));
+    assert!(!html.contains("记录不完整"));
     assert_eq!(std::fs::read(&base).unwrap(), damaged);
 }
 
 #[test]
-fn cli_outputs_agree_on_gap_types_warnings_and_usage_totals() {
+fn cli_outputs_preserve_gap_types_usage_totals_and_the_static_report_layout() {
     let today = SystemCalendar::new().today_at(now_unix()).unwrap();
     let fixture = Fixture::new(today);
     fixture.write([
@@ -402,8 +432,10 @@ fn cli_outputs_agree_on_gap_types_warnings_and_usage_totals() {
     ]);
     let json_path = fixture.directory.path().join("records.json");
     let csv_path = fixture.directory.path().join("records.csv");
-    fixture.export("json", &json_path);
-    fixture.export("csv", &csv_path);
+    let json_output = fixture.export("json", &json_path);
+    let csv_output = fixture.export("csv", &csv_path);
+    assert!(json_output.stderr.is_empty(), "{:?}", json_output.stderr);
+    assert!(csv_output.stderr.is_empty(), "{:?}", csv_output.stderr);
     let rows: Vec<serde_json::Value> =
         serde_json::from_slice(&std::fs::read(json_path).unwrap()).unwrap();
     assert_eq!(rows.len(), 3);
@@ -437,14 +469,18 @@ fn cli_outputs_agree_on_gap_types_warnings_and_usage_totals() {
     }
 
     let html_path = fixture.directory.path().join("report.html");
-    checked_output(
+    let view = checked_output(
         fixture
             .command()
             .args(["view", "--days", "1", "--no-open", "--out"])
             .arg(&html_path),
     );
+    assert!(view.stderr.is_empty(), "{:?}", view.stderr);
     let html = std::fs::read_to_string(html_path).unwrap();
-    assert!(html.contains("Incomplete capture"));
+    assert!(html.contains("<h1>RustTimeNoter</h1><div class=\"meta\">"));
+    assert_eq!(html.matches("<div class=\"card\"").count(), 2);
+    assert!(!html.contains("Incomplete capture"));
+    assert!(!html.contains("记录不完整"));
     assert!(html.contains("Total tracked: <b>3m 00s</b>"));
     let status = checked_output(fixture.command().arg("status"));
     let status = String::from_utf8_lossy(&status.stdout);
@@ -452,7 +488,8 @@ fn cli_outputs_agree_on_gap_types_warnings_and_usage_totals() {
         status.contains("Today records: 2    total: 3m 00s"),
         "{status}"
     );
-    assert!(status.contains("Incomplete capture"));
+    assert!(!status.contains("Incomplete capture"));
+    assert!(!status.contains("Log read warning"));
     let report = checked_output(fixture.command().args([
         "report",
         "--from",
@@ -461,5 +498,8 @@ fn cli_outputs_agree_on_gap_types_warnings_and_usage_totals() {
         &today.to_string(),
     ]));
     assert!(String::from_utf8_lossy(&report.stdout).contains("Total in scope: 3m 00s"));
-    assert!(String::from_utf8_lossy(&report.stderr).contains("Incomplete capture"));
+    assert!(report.stderr.is_empty(), "{:?}", report.stderr);
+    let tail = checked_output(fixture.command().args(["tail", "--once"]));
+    assert!(tail.stderr.is_empty(), "{:?}", tail.stderr);
+    assert!(String::from_utf8_lossy(&tail.stdout).contains("capture gap"));
 }

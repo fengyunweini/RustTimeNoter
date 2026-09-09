@@ -241,6 +241,7 @@ mod tests {
         std::fs::write(&path, complete).unwrap();
         let recovered = read_refresh(&paths, &cipher, &calendar, today, &[], true, 10).unwrap();
         assert_eq!(recovered.lines.len(), 1);
+        assert!(recovered.warning.is_none());
         assert!(previous_error.take().is_some());
         assert!(refresh_error_notice(&mut previous_error, &error).is_some());
         let same = read_refresh(
@@ -279,6 +280,7 @@ mod tests {
         .unwrap();
         assert!(corrected.corrected);
         assert_eq!(corrected.lines.len(), 3);
+        assert!(corrected.warning.is_none());
         assert!(corrected
             .lines
             .iter()
@@ -295,6 +297,7 @@ mod tests {
         .unwrap();
         assert!(!repeated.corrected);
         assert!(repeated.lines.is_empty());
+        assert!(repeated.warning.is_none());
     }
 
     #[test]
